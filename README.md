@@ -1,111 +1,84 @@
-# מערכת ניהול יציאות למילואים (Shmirot)
+# מערכת ניהול שמירות צבאית (Shmirot)
 
-מערכת לניהול בקשות יציאה למילואים עם ממשק משתמש בעברית.
+מערכת לניהול בקשות שמירות, נוכחות וניהול כוח אדם בצבא.
 
-## תכונות
+## תכונות עיקריות
 
-- ניהול משתמשים עם תפקידים שונים
-- הגשת בקשות יציאה
-- אישור/דחייה של בקשות
+- ניהול משתמשים עם דרגות ותפקידים
+- הגשת ואישור בקשות שמירות
 - תצוגת נוכחות יומית ושבועית
 - לוח שנה אינטראקטיבי
-- ניהול תפקידים מותאם אישית
-- סינון לפי פלוגות ומחלקות
+- ניהול פלוגות ומחלקות
 - ייצוא נתונים
+- היסטוריית פעילות
 
-## התקנה מקומית
+## טכנולוגיות
 
-### דרישות
+- **Backend**: Node.js, Express, SQLite
+- **Frontend**: React, CSS3
+- **Database**: SQLite
+
+## התקנה
+
+### דרישות מקדימות
 - Node.js (גרסה 14 ומעלה)
 - npm
 
-### שלבי התקנה
+### התקנת הפרויקט
 
-1. **שכפול הפרויקט**
+1. שכפול הפרויקט:
 ```bash
-git clone <repository-url>
+git clone [URL_של_הריפוזיטורי]
 cd shmirot
 ```
 
-2. **התקנת תלויות Backend**
+2. התקנת תלויות Backend:
 ```bash
 npm install
 ```
 
-3. **התקנת תלויות Frontend**
+3. התקנת תלויות Frontend:
 ```bash
 cd client
 npm install
 cd ..
 ```
 
-4. **הפעלת המערכת**
-```bash
-# Terminal 1 - Backend
-node index.js
+## הפעלה
 
-# Terminal 2 - Frontend
+### הפעלת Backend
+```bash
+node index.js
+```
+השרת יפעל על פורט 4000
+
+### הפעלת Frontend
+```bash
 cd client
 npm start
 ```
-
-המערכת תהיה זמינה ב:
-- Backend: http://localhost:4000
-- Frontend: http://localhost:4001
-
-## פריסה
-
-### Heroku
-1. צור חשבון ב-Heroku
-2. התקן Heroku CLI
-3. הרץ:
-```bash
-heroku create your-app-name
-git add .
-git commit -m "Initial deployment"
-git push heroku main
-```
-
-### Vercel
-1. צור חשבון ב-Vercel
-2. התקן Vercel CLI
-3. הרץ:
-```bash
-vercel
-```
+האפליקציה תיפתח על פורט 3000
 
 ## שימוש
 
-1. הוסף משתמשים ראשונים דרך הטאב "אנשים"
-2. הגדר תפקידים דרך הטאב "תפקידים"
-3. הגש בקשות יציאה דרך הטאב "בקשות יציאה"
-4. צפה בנוכחות דרך הטאב "נוכחות"
-5. השתמש בלוח השנה לתצוגה שבועית/חודשית
+1. פתח את הדפדפן וגש ל-`http://localhost:3000`
+2. הוסף משתמשים ראשונים דרך לשונית "אנשים"
+3. הוסף תפקידים דרך לשונית "תפקידים"
+4. התחל לנהל בקשות שמירות ונוכחות
 
 ## מבנה הפרויקט
 
 ```
 shmirot/
-├── index.js          # שרת Express
-├── database.db       # מסד נתונים SQLite
-├── client/           # אפליקציית React
+├── index.js          # Backend server
+├── package.json      # Backend dependencies
+├── client/           # React frontend
 │   ├── src/
 │   ├── public/
 │   └── package.json
-└── package.json
+└── README.md
 ```
-
-## API Endpoints
-
-- `GET /api/users` - קבלת כל המשתמשים
-- `POST /api/users` - הוספת משתמש חדש
-- `GET /api/requests` - קבלת כל הבקשות
-- `POST /api/requests` - הגשת בקשה חדשה
-- `PUT /api/requests/:id` - עדכון בקשה
-- `GET /api/presence` - נתוני נוכחות
-- `GET /api/roles` - קבלת תפקידים
-- `POST /api/roles` - הוספת תפקיד חדש
 
 ## רישיון
 
-MIT License 
+פרויקט זה נוצר לשימוש צבאי פנימי. 

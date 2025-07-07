@@ -1,11 +1,6 @@
 #!/bin/bash
-
-# Build script for deployment
-
-echo "Building React app..."
+npm install
 cd client
+npm install
 npm run build
-cd ..
-
-echo "Build complete!"
-echo "The built files are in client/build/" 
+cd .. 

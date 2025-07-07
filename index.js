@@ -6,11 +6,13 @@ const path = require('path');
 let db, initDb;
 if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
   // שימוש ב-PostgreSQL בפריסה
+  console.log('Using PostgreSQL database in production');
   const postgresDb = require('./db-postgres');
   db = postgresDb.db;
   initDb = postgresDb.initDb;
 } else {
   // שימוש ב-SQLite בפיתוח
+  console.log('Using SQLite database in development');
   const sqliteDb = require('./db');
   db = sqliteDb.db;
   initDb = sqliteDb.initDb;
