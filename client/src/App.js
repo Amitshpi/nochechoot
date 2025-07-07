@@ -44,7 +44,7 @@ function App() {
   const [selectedDayDetails, setSelectedDayDetails] = useState(null);
   const [showDayModal, setShowDayModal] = useState(false);
 
-  const API_BASE = 'http://localhost:4000/api';
+  const API_BASE = '/api';
 
   // טעינת נתונים
   useEffect(() => {
