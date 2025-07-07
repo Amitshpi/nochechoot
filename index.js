@@ -33,65 +33,62 @@ app.get('/', (req, res) => {
 });
 
 // הוספת משתמש
-app.post('/api/users', async (req, res) => {
-  try {
-    const { name, rank, role, platoon, company, phone, email } = req.body;
-    const result = await db.run(
-      'INSERT INTO users (name, rank, role, platoon, company, phone, email) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-      [name, rank, role, platoon, company, phone, email]
-    );
-    
-    // רישום בהיסטוריה
-    await db.run(
-      'INSERT INTO activity_log (action, table_name, record_id, new_values, user_id) VALUES ($1, $2, $3, $4, $5)',
-      ['CREATE', 'users', result.lastID, JSON.stringify({ name, rank, role, platoon, company, phone, email }), 1]
-    );
-    
-    res.json({ id: result.lastID, name, rank, role, platoon, company, phone, email });
-  } catch (error) {
-    console.error('Error adding user:', error);
-    res.status(500).json({ error: error.message });
-  }
+app.post('/api/users', (req, res) => {
+  const { name, rank, role, platoon, company, phone, email } = req.body;
+  db.run(
+    'INSERT INTO users (name, rank, role, platoon, company, phone, email) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [name, rank, role, platoon, company, phone, email],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      
+      // רישום בהיסטוריה
+      db.run(
+        'INSERT INTO activity_log (action, table_name, record_id, new_values, user_id) VALUES (?, ?, ?, ?, ?)',
+        ['CREATE', 'users', this.lastID, JSON.stringify({ name, rank, role, platoon, company, phone, email }), 1]
+      );
+      
+      res.json({ id: this.lastID, name, rank, role, platoon, company, phone, email });
+    }
+  );
 });
 
 // קבלת כל המשתמשים עם סינון
-app.get('/api/users', async (req, res) => {
-  try {
-    const { role, platoon, company, search } = req.query;
-    let query = 'SELECT * FROM users';
-    let params = [];
-    let conditions = [];
-    let paramIndex = 1;
-    
-    if (role && role !== '') {
-      conditions.push(`role = $${paramIndex++}`);
-      params.push(role);
-    }
-    if (platoon && platoon !== '') {
-      conditions.push(`platoon = $${paramIndex++}`);
-      params.push(platoon);
-    }
-    if (company && company !== '') {
-      conditions.push(`company = $${paramIndex++}`);
-      params.push(company);
-    }
-    if (search && search !== '') {
-      conditions.push(`(name ILIKE $${paramIndex++} OR rank ILIKE $${paramIndex++} OR role ILIKE $${paramIndex++} OR platoon ILIKE $${paramIndex++} OR company ILIKE $${paramIndex++})`);
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
-    }
-    
-    if (conditions.length > 0) {
-      query += ' WHERE ' + conditions.join(' AND ');
-    }
-    
-    query += ' ORDER BY name';
-    
-    const rows = await db.all(query, params);
-    res.json(rows);
-  } catch (error) {
-    console.error('SQL Error:', error);
-    res.status(500).json({ error: error.message });
+app.get('/api/users', (req, res) => {
+  const { role, platoon, company, search } = req.query;
+  let query = 'SELECT * FROM users';
+  let params = [];
+  let conditions = [];
+  
+  if (role && role !== '') {
+    conditions.push('role = ?');
+    params.push(role);
   }
+  if (platoon && platoon !== '') {
+    conditions.push('platoon = ?');
+    params.push(platoon);
+  }
+  if (company && company !== '') {
+    conditions.push('company = ?');
+    params.push(company);
+  }
+  if (search && search !== '') {
+    conditions.push('(name LIKE ? OR rank LIKE ? OR role LIKE ? OR platoon LIKE ? OR company LIKE ?)');
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+  }
+  
+  query += ' ORDER BY name';
+  
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      console.error('SQL Error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(rows);
+  });
 });
 
 // קבלת תפקידים
