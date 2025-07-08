@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 
 function App() {
@@ -6,8 +6,7 @@ function App() {
   const [users, setUsers] = useState([]);
   const [requests, setRequests] = useState([]);
   const [roles, setRoles] = useState([]);
-  const [platoons, setPlatoons] = useState([]);
-  const [companies, setCompanies] = useState([]);
+
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [presence, setPresence] = useState({ present: [], absent: [] });
   const [activity, setActivity] = useState([]);
@@ -20,7 +19,7 @@ function App() {
   const [useMultiRoleFilter, setUseMultiRoleFilter] = useState(false);
 
   // טופס הוספת משתמש
-  const [newUser, setNewUser] = useState({ name: '', rank: '', role: '', platoon: '', company: '', phone: '', email: '' });
+  const [newUser, setNewUser] = useState({ name: '', rank: '', role: '', phone: '', email: '' });
   
   // טופס הוספת בקשת יציאה
   const [newRequest, setNewRequest] = useState({ 
@@ -61,8 +60,6 @@ function App() {
     loadUsers();
     loadRequests();
     loadRoles();
-    loadPlatoons();
-    loadCompanies();
     loadActivity();
   }, []);
 
@@ -118,25 +115,7 @@ function App() {
     }
   };
 
-  const loadPlatoons = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/platoons`);
-      const data = await response.json();
-      setPlatoons(data);
-    } catch (error) {
-      console.error('Error loading platoons:', error);
-    }
-  };
 
-  const loadCompanies = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/companies`);
-      const data = await response.json();
-      setCompanies(data);
-    } catch (error) {
-      console.error('Error loading companies:', error);
-    }
-  };
 
   const loadPresence = async () => {
     try {
@@ -332,7 +311,7 @@ function App() {
         body: JSON.stringify(newUser)
       });
       if (response.ok) {
-        setNewUser({ name: '', rank: '', role: '', platoon: '', company: '', phone: '', email: '' });
+        setNewUser({ name: '', rank: '', role: '', phone: '', email: '' });
         loadUsers(userFilters);
         loadActivity();
       }
@@ -668,24 +647,6 @@ function App() {
                   <option key={role.id} value={role.name}>{role.name}</option>
                 ))}
               </select>
-              <select
-                value={userFilters.platoon}
-                onChange={(e) => setUserFilters({...userFilters, platoon: e.target.value})}
-              >
-                <option value="">כל הפלוגות</option>
-                {platoons.map(platoon => (
-                  <option key={platoon} value={platoon}>{platoon}</option>
-                ))}
-              </select>
-              <select
-                value={userFilters.company}
-                onChange={(e) => setUserFilters({...userFilters, company: e.target.value})}
-              >
-                <option value="">כל המחלקות</option>
-                {companies.map(company => (
-                  <option key={company} value={company}>{company}</option>
-                ))}
-              </select>
             </div>
 
             <form onSubmit={addUser} className="form">
@@ -713,18 +674,6 @@ function App() {
                 ))}
               </select>
               <input
-                type="text"
-                placeholder="פלוגה"
-                value={newUser.platoon}
-                onChange={(e) => setNewUser({...newUser, platoon: e.target.value})}
-              />
-              <input
-                type="text"
-                placeholder="מחלקה"
-                value={newUser.company}
-                onChange={(e) => setNewUser({...newUser, company: e.target.value})}
-              />
-              <input
                 type="tel"
                 placeholder="טלפון"
                 value={newUser.phone}
@@ -747,8 +696,6 @@ function App() {
                     <strong>{user.name}</strong>
                     {user.rank && <span> - {user.rank}</span>}
                     {user.role && <span> ({user.role})</span>}
-                    {user.platoon && <span> | פלוגה: {user.platoon}</span>}
-                    {user.company && <span> | מחלקה: {user.company}</span>}
                   </div>
                   <div className="user-actions">
                     {user.phone && <span>📞 {user.phone}</span>}
@@ -919,24 +866,6 @@ function App() {
                     <option key={role.id} value={role.name}>{role.name}</option>
                   ))}
                 </select>
-                <select
-                  value={presenceFilters.platoon}
-                  onChange={(e) => setPresenceFilters({...presenceFilters, platoon: e.target.value})}
-                >
-                  <option value="">כל הפלוגות</option>
-                  {platoons.map(platoon => (
-                    <option key={platoon} value={platoon}>{platoon}</option>
-                  ))}
-                </select>
-                <select
-                  value={presenceFilters.company}
-                  onChange={(e) => setPresenceFilters({...presenceFilters, company: e.target.value})}
-                >
-                  <option value="">כל המחלקות</option>
-                  {companies.map(company => (
-                    <option key={company} value={company}>{company}</option>
-                  ))}
-                </select>
               </div>
             </div>
 
@@ -949,8 +878,6 @@ function App() {
                       <strong>{user.name}</strong>
                       {user.rank && <span> - {user.rank}</span>}
                       {user.role && <span> ({user.role})</span>}
-                      {user.platoon && <span> | פלוגה: {user.platoon}</span>}
-                      {user.company && <span> | מחלקה: {user.company}</span>}
                     </div>
                   ))}
                 </div>
@@ -964,8 +891,6 @@ function App() {
                       <strong>{user.name}</strong>
                       {user.rank && <span> - {user.rank}</span>}
                       {user.role && <span> ({user.role})</span>}
-                      {user.platoon && <span> | פלוגה: {user.platoon}</span>}
-                      {user.company && <span> | מחלקה: {user.company}</span>}
                     </div>
                   ))}
                 </div>
@@ -1040,25 +965,6 @@ function App() {
                     </div>
                   </div>
                 )}
-                
-                <select
-                  value={presenceFilters.platoon}
-                  onChange={(e) => setPresenceFilters({...presenceFilters, platoon: e.target.value})}
-                >
-                  <option value="">כל הפלוגות</option>
-                  {platoons.map(platoon => (
-                    <option key={platoon} value={platoon}>{platoon}</option>
-                  ))}
-                </select>
-                <select
-                  value={presenceFilters.company}
-                  onChange={(e) => setPresenceFilters({...presenceFilters, company: e.target.value})}
-                >
-                  <option value="">כל המחלקות</option>
-                  {companies.map(company => (
-                    <option key={company} value={company}>{company}</option>
-                  ))}
-                </select>
               </div>
               
               {viewMode === 'month' ? (
@@ -1088,6 +994,11 @@ function App() {
               <div className="calendar-grid">
                 {['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'].map(day => (
                   <div key={day} className="calendar-header">{day}</div>
+                ))}
+                
+                {/* רווחים לימים לפני תחילת החודש */}
+                {Array.from({ length: new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay() }, (_, i) => (
+                  <div key={`empty-${i}`} className="calendar-day empty"></div>
                 ))}
                 
                 {calendarData.map(day => (
@@ -1194,8 +1105,6 @@ function App() {
                               <span className="user-name">{user.name}</span>
                               {user.rank && <span className="user-rank"> - {user.rank}</span>}
                               {user.role && <span className="user-role"> ({user.role})</span>}
-                              {user.platoon && <span className="user-platoon"> | פלוגה: {user.platoon}</span>}
-                              {user.company && <span className="user-company"> | מחלקה: {user.company}</span>}
                             </div>
                           ))}
                         </div>
@@ -1209,8 +1118,6 @@ function App() {
                               <span className="user-name">{user.name}</span>
                               {user.rank && <span className="user-rank"> - {user.rank}</span>}
                               {user.role && <span className="user-role"> ({user.role})</span>}
-                              {user.platoon && <span className="user-platoon"> | פלוגה: {user.platoon}</span>}
-                              {user.company && <span className="user-company"> | מחלקה: {user.company}</span>}
                             </div>
                           ))}
                         </div>
@@ -1225,8 +1132,6 @@ function App() {
                                 <span className="user-name">{user.name}</span>
                                 {user.rank && <span className="user-rank"> - {user.rank}</span>}
                                 {user.role && <span className="user-role"> ({user.role})</span>}
-                                {user.platoon && <span className="user-platoon"> | פלוגה: {user.platoon}</span>}
-                                {user.company && <span className="user-company"> | מחלקה: {user.company}</span>}
                               </div>
                             ))}
                           </div>
@@ -1242,8 +1147,6 @@ function App() {
                                 <span className="user-name">{user.name}</span>
                                 {user.rank && <span className="user-rank"> - {user.rank}</span>}
                                 {user.role && <span className="user-role"> ({user.role})</span>}
-                                {user.platoon && <span className="user-platoon"> | פלוגה: {user.platoon}</span>}
-                                {user.company && <span className="user-company"> | מחלקה: {user.company}</span>}
                               </div>
                             ))}
                           </div>
@@ -1379,24 +1282,6 @@ function App() {
                   <option value="">בחר תפקיד</option>
                   {roles.map(role => (
                     <option key={role.id} value={role.name}>{role.name}</option>
-                  ))}
-                </select>
-                <select
-                  value={editingUser.platoon}
-                  onChange={(e) => setEditingUser({...editingUser, platoon: e.target.value})}
-                >
-                  <option value="">בחר פלוגה</option>
-                  {platoons.map(platoon => (
-                    <option key={platoon} value={platoon}>{platoon}</option>
-                  ))}
-                </select>
-                <select
-                  value={editingUser.company}
-                  onChange={(e) => setEditingUser({...editingUser, company: e.target.value})}
-                >
-                  <option value="">בחר מחלקה</option>
-                  {companies.map(company => (
-                    <option key={company} value={company}>{company}</option>
                   ))}
                 </select>
                 <input

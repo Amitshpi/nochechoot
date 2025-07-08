@@ -536,6 +536,18 @@ body {
   position: relative;
 }
 
+.calendar-day.empty {
+  background: transparent;
+  border: none;
+  cursor: default;
+}
+
+.calendar-day.empty:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: transparent;
+}
+
 .conflict-indicator {
   position: absolute;
   top: 0.3rem;
