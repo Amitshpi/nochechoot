@@ -332,6 +332,32 @@ app.get('/api/requests', async (req, res) => {
   }
 });
 
+// עריכת בקשה
+app.put('/api/requests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id, start_date, end_date, reason } = req.body;
+    
+    if (process.env.NODE_ENV === 'production') {
+      await db.run(
+        'UPDATE requests SET user_id = $1, start_date = $2, end_date = $3, reason = $4 WHERE id = $5',
+        [user_id, start_date, end_date, reason, id]
+      );
+    } else {
+      db.run(
+        'UPDATE requests SET user_id = ?, start_date = ?, end_date = ?, reason = ? WHERE id = ?',
+        [user_id, start_date, end_date, reason, id],
+        function (err) {
+          if (err) return res.status(500).json({ error: err.message });
+        }
+      );
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // אישור/דחייה של בקשה
 app.put('/api/requests/:id/status', async (req, res) => {
   try {
@@ -384,19 +410,100 @@ app.get('/api/presence', async (req, res) => {
     const { date, role, platoon, company } = req.query;
     if (!date) return res.status(400).json({ error: 'Missing date' });
     
-    let query = `
-      SELECT users.*, requests.id as request_id, requests.status as request_status 
+    // שליפת כל הבקשות לתאריך זה (כולל ממתינות)
+    let requestsQuery = `
+      SELECT users.*, requests.id as request_id, requests.status as request_status, requests.reason
       FROM users
       LEFT JOIN requests ON users.id = requests.user_id
       AND requests.start_date <= ${process.env.NODE_ENV === 'production' ? '$1' : '?'} AND requests.end_date >= ${process.env.NODE_ENV === 'production' ? '$2' : '?'}
-      AND requests.status = 'approved'
+    `;
+    let requestsParams = [date, date];
+    let requestsConditions = [];
+    
+    if (role && role !== '') {
+      requestsConditions.push(process.env.NODE_ENV === 'production' ? 'users.role = $' + (requestsParams.length + 1) : 'users.role = ?');
+      requestsParams.push(role);
+    }
+    if (platoon && platoon !== '') {
+      requestsConditions.push(process.env.NODE_ENV === 'production' ? 'users.platoon = $' + (requestsParams.length + 1) : 'users.platoon = ?');
+      requestsParams.push(platoon);
+    }
+    if (company && company !== '') {
+      requestsConditions.push(process.env.NODE_ENV === 'production' ? 'users.company = $' + (requestsParams.length + 1) : 'users.company = ?');
+      requestsParams.push(company);
+    }
+    
+    if (requestsConditions.length > 0) {
+      requestsQuery += ' WHERE ' + requestsConditions.join(' AND ');
+    }
+    
+    const allRows = await db.all(requestsQuery, requestsParams);
+    
+    // מי שאין לו בקשה מאושרת בתאריך הזה - נמצא בבסיס
+    const present = allRows.filter(r => !r.request_id);
+    const absent = allRows.filter(r => r.request_id && r.request_status === 'approved');
+    const pending = allRows.filter(r => r.request_id && r.request_status === 'pending');
+    const rejected = allRows.filter(r => r.request_id && r.request_status === 'rejected');
+    
+    // בדיקה אם יש אנשים עם אותו תפקיד שיוצאים באותו יום
+    const roleConflicts = {};
+    const approvedRequests = allRows.filter(r => r.request_id && r.request_status === 'approved');
+    
+    approvedRequests.forEach(request => {
+      if (!roleConflicts[request.role]) {
+        roleConflicts[request.role] = [];
+      }
+      roleConflicts[request.role].push(request);
+    });
+    
+    const conflicts = Object.entries(roleConflicts)
+      .filter(([role, requests]) => requests.length > 1)
+      .map(([role, requests]) => ({
+        role,
+        count: requests.length,
+        users: requests.map(r => ({ name: r.name, rank: r.rank }))
+      }));
+    
+    res.json({ 
+      present, 
+      absent, 
+      pending, 
+      rejected,
+      conflicts,
+      summary: {
+        present: present.length,
+        absent: absent.length,
+        pending: pending.length,
+        rejected: rejected.length
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// שליפת נוכחות עם תמיכה במספר תפקידים
+app.get('/api/presence/multi-role', async (req, res) => {
+  try {
+    const { date, roles, platoon, company } = req.query;
+    if (!date) return res.status(400).json({ error: 'Missing date' });
+    
+    let query = `
+      SELECT users.*, requests.id as request_id, requests.status as request_status, requests.reason
+      FROM users
+      LEFT JOIN requests ON users.id = requests.user_id
+      AND requests.start_date <= ${process.env.NODE_ENV === 'production' ? '$1' : '?'} AND requests.end_date >= ${process.env.NODE_ENV === 'production' ? '$2' : '?'}
     `;
     let params = [date, date];
     let conditions = [];
     
-    if (role && role !== '') {
-      conditions.push(process.env.NODE_ENV === 'production' ? 'users.role = $' + (params.length + 1) : 'users.role = ?');
-      params.push(role);
+    if (roles && roles !== '') {
+      const roleList = roles.split(',').map(r => r.trim());
+      const rolePlaceholders = roleList.map((_, i) => 
+        process.env.NODE_ENV === 'production' ? `$${params.length + i + 1}` : '?'
+      ).join(', ');
+      conditions.push(`users.role IN (${rolePlaceholders})`);
+      params.push(...roleList);
     }
     if (platoon && platoon !== '') {
       conditions.push(process.env.NODE_ENV === 'production' ? 'users.platoon = $' + (params.length + 1) : 'users.platoon = ?');
@@ -411,11 +518,45 @@ app.get('/api/presence', async (req, res) => {
       query += ' WHERE ' + conditions.join(' AND ');
     }
     
-    const rows = await db.all(query, params);
-    // מי שאין לו בקשה מאושרת בתאריך הזה - נמצא בבסיס
-    const present = rows.filter(r => !r.request_id);
-    const absent = rows.filter(r => r.request_id);
-    res.json({ present, absent });
+    const allRows = await db.all(query, params);
+    
+    const present = allRows.filter(r => !r.request_id);
+    const absent = allRows.filter(r => r.request_id && r.request_status === 'approved');
+    const pending = allRows.filter(r => r.request_id && r.request_status === 'pending');
+    const rejected = allRows.filter(r => r.request_id && r.request_status === 'rejected');
+    
+    // בדיקה אם יש אנשים עם אותו תפקיד שיוצאים באותו יום
+    const roleConflicts = {};
+    const approvedRequests = allRows.filter(r => r.request_id && r.request_status === 'approved');
+    
+    approvedRequests.forEach(request => {
+      if (!roleConflicts[request.role]) {
+        roleConflicts[request.role] = [];
+      }
+      roleConflicts[request.role].push(request);
+    });
+    
+    const conflicts = Object.entries(roleConflicts)
+      .filter(([role, requests]) => requests.length > 1)
+      .map(([role, requests]) => ({
+        role,
+        count: requests.length,
+        users: requests.map(r => ({ name: r.name, rank: r.rank }))
+      }));
+    
+    res.json({ 
+      present, 
+      absent, 
+      pending, 
+      rejected,
+      conflicts,
+      summary: {
+        present: present.length,
+        absent: absent.length,
+        pending: pending.length,
+        rejected: rejected.length
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
