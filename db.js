@@ -70,6 +70,26 @@ function initDb() {
         console.error('Error adding company column:', err);
       }
     });
+
+    // יצירת טבלת לוח זמנים אוטומטי
+    db.run(`
+      CREATE TABLE IF NOT EXISTS leave_schedule (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        user_name TEXT NOT NULL,
+        user_rank TEXT,
+        user_role TEXT,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        reason TEXT,
+        request_id INTEGER,
+        priority TEXT DEFAULT 'low',
+        has_conflict INTEGER DEFAULT 0,
+        conflict_reason TEXT,
+        week TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
   });
 }
 

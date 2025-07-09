@@ -638,6 +638,263 @@ app.get('/api/activity', async (req, res) => {
   }
 });
 
+// אלגוריתם אוטומטי לחישוב זמני יציאה
+app.post('/api/schedule-leaves', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body;
+    
+    // קבלת כל המשתמשים
+    const users = await db.all('SELECT * FROM users ORDER BY name', []);
+    
+    // קבלת כל בקשות היציאה בטווח התאריכים
+    const requests = await db.all(
+      'SELECT * FROM requests WHERE start_date >= ? AND end_date <= ? AND status = "pending" ORDER BY start_date',
+      [startDate, endDate]
+    );
+    
+    // חישוב זמני יציאות אופטימליים
+    const schedule = calculateOptimalSchedule(users, requests, startDate, endDate);
+    
+    // שמירת התוצאות
+    await saveScheduleResults(schedule);
+    
+    res.json({
+      success: true,
+      schedule: schedule,
+      summary: {
+        totalUsers: users.length,
+        totalRequests: requests.length,
+        scheduledLeaves: schedule.length,
+        conflicts: schedule.filter(s => s.hasConflict).length
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error scheduling leaves:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// פונקציה לחישוב זמני יציאה אופטימליים
+function calculateOptimalSchedule(users, requests, startDate, endDate) {
+  const schedule = [];
+  const minPeopleInBase = 3;
+  
+  // יצירת לוח שנה שבועי
+  const weeks = generateWeeks(startDate, endDate);
+  
+  // מיון בקשות לפי עדיפות (תאריך מוקדם יותר = עדיפות גבוהה יותר)
+  const sortedRequests = [...requests].sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+  
+  // לכל שבוע, נחשב את היציאות האופטימליות
+  weeks.forEach(week => {
+    const weekSchedule = calculateWeekSchedule(users, sortedRequests, week, minPeopleInBase);
+    schedule.push(...weekSchedule);
+  });
+  
+  return schedule;
+}
+
+// פונקציה ליצירת שבועות
+function generateWeeks(startDate, endDate) {
+  const weeks = [];
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  let currentWeekStart = new Date(start);
+  currentWeekStart.setDate(start.getDate() - start.getDay()); // התחלה ביום ראשון
+  
+  while (currentWeekStart <= end) {
+    const weekEnd = new Date(currentWeekStart);
+    weekEnd.setDate(currentWeekStart.getDate() + 6); // סוף ביום שבת
+    
+    weeks.push({
+      start: new Date(currentWeekStart),
+      end: new Date(weekEnd),
+      startStr: currentWeekStart.toISOString().split('T')[0],
+      endStr: weekEnd.toISOString().split('T')[0]
+    });
+    
+    currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+  }
+  
+  return weeks;
+}
+
+// פונקציה לחישוב יציאות לשבוע ספציפי
+function calculateWeekSchedule(users, requests, week, minPeopleInBase) {
+  const weekSchedule = [];
+  const availableUsers = [...users];
+  const weekRequests = requests.filter(req => {
+    const reqStart = new Date(req.start_date);
+    const reqEnd = new Date(req.end_date);
+    return reqStart <= week.end && reqEnd >= week.start;
+  });
+  
+  // מיון בקשות לפי עדיפות (תאריך מוקדם יותר)
+  weekRequests.sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+  
+  // לכל בקשה, נבדוק אם אפשר לאשר אותה
+  weekRequests.forEach(request => {
+    const user = availableUsers.find(u => u.id == request.user_id);
+    if (!user) return;
+    
+    // בדיקה אם יש מספיק אנשים בבסיס אם נאשר את הבקשה
+    const peopleInBase = availableUsers.length - weekSchedule.length;
+    
+    if (peopleInBase > minPeopleInBase) {
+      // יש מספיק אנשים - אפשר לאשר
+      weekSchedule.push({
+        userId: user.id,
+        userName: user.name,
+        userRank: user.rank,
+        userRole: user.role,
+        startDate: request.start_date,
+        endDate: request.end_date,
+        reason: request.reason,
+        requestId: request.id,
+        priority: 'high', // בקשה מקורית
+        hasConflict: false,
+        week: week.startStr
+      });
+      
+      // הסרת המשתמש מהרשימה הזמינה לשבוע זה
+      const userIndex = availableUsers.findIndex(u => u.id == request.user_id);
+      if (userIndex > -1) {
+        availableUsers.splice(userIndex, 1);
+      }
+    } else {
+      // אין מספיק אנשים - נסמן כקונפליקט
+      weekSchedule.push({
+        userId: user.id,
+        userName: user.name,
+        userRank: user.rank,
+        userRole: user.role,
+        startDate: request.start_date,
+        endDate: request.end_date,
+        reason: request.reason,
+        requestId: request.id,
+        priority: 'high',
+        hasConflict: true,
+        conflictReason: 'לא מספיק אנשים בבסיס',
+        week: week.startStr
+      });
+    }
+  });
+  
+  // אם יש אנשים זמינים, נחלק יציאות נוספות
+  const remainingUsers = availableUsers.filter(u => 
+    !weekSchedule.some(s => s.userId == u.id)
+  );
+  
+  if (remainingUsers.length > 0) {
+    // חלוקה הוגנת של יציאות נוספות
+    const additionalLeaves = Math.min(remainingUsers.length, 2); // מקסימום 2 יציאות נוספות לשבוע
+    
+    for (let i = 0; i < additionalLeaves; i++) {
+      const user = remainingUsers[i];
+      weekSchedule.push({
+        userId: user.id,
+        userName: user.name,
+        userRank: user.rank,
+        userRole: user.role,
+        startDate: week.startStr,
+        endDate: week.endStr,
+        reason: 'יציאה אוטומטית',
+        requestId: null,
+        priority: 'low',
+        hasConflict: false,
+        week: week.startStr
+      });
+    }
+  }
+  
+  return weekSchedule;
+}
+
+// פונקציה לשמירת תוצאות החישוב
+async function saveScheduleResults(schedule) {
+  try {
+    // מחיקת תוצאות קודמות
+    if (process.env.NODE_ENV === 'production') {
+      await db.run('DELETE FROM leave_schedule');
+    } else {
+      db.run('DELETE FROM leave_schedule');
+    }
+    
+    // שמירת התוצאות החדשות
+    for (const item of schedule) {
+      if (process.env.NODE_ENV === 'production') {
+        await db.run(
+          'INSERT INTO leave_schedule (user_id, user_name, user_rank, user_role, start_date, end_date, reason, request_id, priority, has_conflict, conflict_reason, week) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
+          [item.userId, item.userName, item.userRank, item.userRole, item.startDate, item.endDate, item.reason, item.requestId, item.priority, item.hasConflict, item.conflictReason || null, item.week]
+        );
+      } else {
+        db.run(
+          'INSERT INTO leave_schedule (user_id, user_name, user_rank, user_role, start_date, end_date, reason, request_id, priority, has_conflict, conflict_reason, week) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [item.userId, item.userName, item.userRank, item.userRole, item.startDate, item.endDate, item.reason, item.requestId, item.priority, item.hasConflict, item.conflictReason || null, item.week]
+        );
+      }
+    }
+  } catch (error) {
+    console.error('Error saving schedule results:', error);
+    throw error;
+  }
+}
+
+// קבלת לוח הזמנים המחושב
+app.get('/api/leave-schedule', async (req, res) => {
+  try {
+    const { week } = req.query;
+    let query = 'SELECT * FROM leave_schedule';
+    let params = [];
+    
+    if (week) {
+      query += ' WHERE week = ?';
+      params.push(week);
+    }
+    
+    query += ' ORDER BY start_date, user_name';
+    
+    const rows = await db.all(query, params);
+    res.json(rows);
+  } catch (error) {
+    console.error('Error getting leave schedule:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// קבלת סיכום שבועי
+app.get('/api/schedule-summary', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    let query = `
+      SELECT 
+        week,
+        COUNT(*) as total_leaves,
+        SUM(CASE WHEN has_conflict = 1 THEN 1 ELSE 0 END) as conflicts,
+        SUM(CASE WHEN priority = 'high' THEN 1 ELSE 0 END) as high_priority,
+        SUM(CASE WHEN priority = 'low' THEN 1 ELSE 0 END) as low_priority
+      FROM leave_schedule
+    `;
+    
+    let params = [];
+    if (startDate && endDate) {
+      query += ' WHERE week >= ? AND week <= ?';
+      params.push(startDate, endDate);
+    }
+    
+    query += ' GROUP BY week ORDER BY week';
+    
+    const rows = await db.all(query, params);
+    res.json(rows);
+  } catch (error) {
+    console.error('Error getting schedule summary:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Handle React routing, return all requests to React app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/build', 'index.html'));

@@ -104,6 +104,26 @@ const initDb = async () => {
       )
     `);
 
+    // יצירת טבלת לוח זמנים אוטומטי
+    await db.run(`
+      CREATE TABLE IF NOT EXISTS leave_schedule (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        user_name TEXT NOT NULL,
+        user_rank TEXT,
+        user_role TEXT,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        reason TEXT,
+        request_id INTEGER,
+        priority TEXT DEFAULT 'low',
+        has_conflict BOOLEAN DEFAULT false,
+        conflict_reason TEXT,
+        week TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     console.log('Database tables created successfully');
   } catch (error) {
     console.error('Error creating database tables:', error);
