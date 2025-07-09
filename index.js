@@ -648,8 +648,10 @@ app.post('/api/schedule-leaves', async (req, res) => {
     
     // קבלת כל בקשות היציאה בטווח התאריכים
     const requests = await db.all(
-      'SELECT * FROM requests WHERE start_date >= ? AND end_date <= ? AND status = "pending" ORDER BY start_date',
-      [startDate, endDate]
+      process.env.NODE_ENV === 'production' 
+        ? 'SELECT * FROM requests WHERE start_date >= $1 AND end_date <= $2 AND status = $3 ORDER BY start_date'
+        : 'SELECT * FROM requests WHERE start_date >= ? AND end_date <= ? AND status = ? ORDER BY start_date',
+      process.env.NODE_ENV === 'production' ? [startDate, endDate, 'pending'] : [startDate, endDate, 'pending']
     );
     
     // חישוב זמני יציאות אופטימליים
@@ -850,7 +852,7 @@ app.get('/api/leave-schedule', async (req, res) => {
     let params = [];
     
     if (week) {
-      query += ' WHERE week = ?';
+      query += process.env.NODE_ENV === 'production' ? ' WHERE week = $1' : ' WHERE week = ?';
       params.push(week);
     }
     
@@ -881,7 +883,7 @@ app.get('/api/schedule-summary', async (req, res) => {
     
     let params = [];
     if (startDate && endDate) {
-      query += ' WHERE week >= ? AND week <= ?';
+      query += process.env.NODE_ENV === 'production' ? ' WHERE week >= $1 AND week <= $2' : ' WHERE week >= ? AND week <= ?';
       params.push(startDate, endDate);
     }
     
