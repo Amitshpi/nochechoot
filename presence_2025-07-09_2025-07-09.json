@@ -1,0 +1,83 @@
+[
+  {
+    "name": "בר יוחאי אשטמקר ",
+    "rank": "סמ״ר",
+    "role": "חובש קרבי",
+    "status": "בבסיס",
+    "start_date": null,
+    "end_date": null,
+    "reason": null
+  },
+  {
+    "name": "מאיר אלטמן ",
+    "rank": "סמ״ר",
+    "role": "נהג",
+    "status": "בבסיס",
+    "start_date": null,
+    "end_date": null,
+    "reason": null
+  },
+  {
+    "name": "עמית מוקוטוב",
+    "rank": "רס״ר ",
+    "role": "נהג",
+    "status": "לא בבסיס",
+    "start_date": "2025-07-09T00:00:00.000Z",
+    "end_date": "2025-07-11T00:00:00.000Z",
+    "reason": "פגישה בעבודה ביום רביעי צריך להיות בבית ב18:00\nחתונה בחמישי"
+  },
+  {
+    "name": "גיא שמואל",
+    "rank": "רס\"ר ",
+    "role": "נהג",
+    "status": "בבסיס",
+    "start_date": null,
+    "end_date": null,
+    "reason": null
+  },
+  {
+    "name": "יובל שהם",
+    "rank": "רסר",
+    "role": "חובש קרבי",
+    "status": "בבסיס",
+    "start_date": null,
+    "end_date": null,
+    "reason": null
+  },
+  {
+    "name": "דורון עדן",
+    "rank": "רס״ר",
+    "role": "נהג",
+    "status": "בבסיס",
+    "start_date": null,
+    "end_date": null,
+    "reason": null
+  },
+  {
+    "name": "מעין משי",
+    "rank": "סגן",
+    "role": "קצין",
+    "status": "בבסיס",
+    "start_date": null,
+    "end_date": null,
+    "reason": null
+  },
+  {
+    "name": "עמית שפיגלמן",
+    "rank": "רס\"ל",
+    "role": "חובש קרבי",
+    "status": "בבסיס",
+    "start_date": null,
+    "end_date": null,
+    "reason": null
+  },
+  {
+    "name": "אריק לויט",
+    "rank": "סמ\"ר",
+    "role": "קשר",
+    "status": "לא בבסיס",
+    "start_date": "2025-07-09T00:00:00.000Z",
+    "end_date": "2025-07-19T00:00:00.000Z",
+    "reason": "מבחן"
+  }
+]
