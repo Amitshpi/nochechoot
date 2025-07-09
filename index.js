@@ -21,10 +21,7 @@ if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:4000'],
-  credentials: true
-}));
+app.use(cors());
 app.use(bodyParser.json());
 
 // Serve static files from React build
@@ -440,12 +437,7 @@ app.get('/api/presence', async (req, res) => {
       requestsQuery += ' WHERE ' + requestsConditions.join(' AND ');
     }
     
-    const allRows = await new Promise((resolve, reject) => {
-      db.all(requestsQuery, requestsParams, (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
-    });
+    const allRows = await db.all(requestsQuery, requestsParams);
     
     // מי שאין לו בקשה מאושרת בתאריך הזה - נמצא בבסיס
     const present = allRows.filter(r => !r.request_id);
@@ -526,12 +518,7 @@ app.get('/api/presence/multi-role', async (req, res) => {
       query += ' WHERE ' + conditions.join(' AND ');
     }
     
-    const allRows = await new Promise((resolve, reject) => {
-      db.all(query, params, (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
-    });
+    const allRows = await db.all(query, params);
     
     const present = allRows.filter(r => !r.request_id);
     const absent = allRows.filter(r => r.request_id && r.request_status === 'approved');
@@ -628,282 +615,28 @@ app.get('/api/export', async (req, res) => {
 // קבלת היסטוריית פעילות
 app.get('/api/activity', async (req, res) => {
   try {
-    const query = `
-      SELECT * FROM activity_log 
-      ORDER BY created_at DESC 
-      LIMIT 100
-    `;
+    const { table_name, record_id, limit = 50 } = req.query;
+    let query = 'SELECT * FROM activity_log';
+    let params = [];
     
-    const rows = await new Promise((resolve, reject) => {
-      db.all(query, [], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows || []);
-      });
-    });
+    if (table_name) {
+      query += process.env.NODE_ENV === 'production' ? ' WHERE table_name = $1' : ' WHERE table_name = ?';
+      params.push(table_name);
+    }
+    if (record_id) {
+      query += table_name ? (process.env.NODE_ENV === 'production' ? ' AND record_id = $' + (params.length + 1) : ' AND record_id = ?') : (process.env.NODE_ENV === 'production' ? ' WHERE record_id = $1' : ' WHERE record_id = ?');
+      params.push(record_id);
+    }
     
+    query += process.env.NODE_ENV === 'production' ? ' ORDER BY created_at DESC LIMIT $' + (params.length + 1) : ' ORDER BY created_at DESC LIMIT ?';
+    params.push(limit);
+    
+    const rows = await db.all(query, params);
     res.json(rows);
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: error.message });
   }
 });
-
-// אופטימיזציה של לוח יציאות
-app.post('/api/optimize-leave', async (req, res) => {
-  try {
-    const {
-      minPeopleInBase,
-      roleRequirements,
-      minLeaveDuration,
-      maxLeaveDuration,
-      startDate,
-      endDate
-    } = req.body;
-
-    // קבלת כל המשתמשים
-    const users = await new Promise((resolve, reject) => {
-      db.all('SELECT * FROM users ORDER BY name', [], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
-    });
-
-    // קבלת בקשות קיימות
-    const existingRequests = await new Promise((resolve, reject) => {
-      db.all('SELECT * FROM requests WHERE status = "approved"', [], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
-    });
-
-    // אלגוריתם אופטימיזציה
-    const optimizationResults = optimizeLeaveSchedule({
-      users,
-      existingRequests,
-      minPeopleInBase,
-      roleRequirements,
-      minLeaveDuration,
-      maxLeaveDuration,
-      startDate,
-      endDate
-    });
-
-    res.json(optimizationResults);
-  } catch (error) {
-    console.error('Error optimizing leave schedule:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// החלת תוצאות האופטימיזציה
-app.post('/api/apply-optimization', async (req, res) => {
-  try {
-    const { requests } = req.body;
-    
-    // יצירת בקשות חדשות
-    for (const request of requests) {
-      await new Promise((resolve, reject) => {
-        const query = `
-          INSERT INTO requests (user_id, start_date, end_date, reason, status, created_at)
-          VALUES (?, ?, ?, ?, 'pending', datetime('now'))
-        `;
-        
-        db.run(query, [
-          request.userId,
-          request.startDate,
-          request.endDate,
-          request.reason
-        ], function(err) {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-    }
-
-    res.json({ success: true, message: 'Optimization applied successfully' });
-  } catch (error) {
-    console.error('Error applying optimization:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// פונקציית האופטימיזציה
-function optimizeLeaveSchedule({
-  users,
-  existingRequests,
-  minPeopleInBase,
-  roleRequirements,
-  minLeaveDuration,
-  maxLeaveDuration,
-  startDate,
-  endDate
-}) {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const totalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-  
-  // יצירת לוח זמנים
-  const schedule = {};
-  for (let i = 0; i < totalDays; i++) {
-    const date = new Date(start);
-    date.setDate(date.getDate() + i);
-    const dateStr = date.toISOString().split('T')[0];
-    schedule[dateStr] = {
-      peopleInBase: users.length,
-      peopleOnLeave: 0,
-      roleCounts: {}
-    };
-  }
-
-  // חישוב אנשים בבסיס לפי בקשות קיימות
-  existingRequests.forEach(request => {
-    const start = new Date(request.start_date);
-    const end = new Date(request.end_date);
-    
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
-      if (schedule[dateStr]) {
-        schedule[dateStr].peopleInBase--;
-        schedule[dateStr].peopleOnLeave++;
-      }
-    }
-  });
-
-  // חישוב תפקידים בבסיס
-  users.forEach(user => {
-    const userRequests = existingRequests.filter(r => r.user_id === user.id);
-    const isOnLeave = (date) => {
-      return userRequests.some(r => {
-        const start = new Date(r.start_date);
-        const end = new Date(r.end_date);
-        return date >= start && date <= end;
-      });
-    };
-
-    Object.keys(schedule).forEach(dateStr => {
-      const date = new Date(dateStr);
-      if (!isOnLeave(date)) {
-        if (!schedule[dateStr].roleCounts[user.role]) {
-          schedule[dateStr].roleCounts[user.role] = 0;
-        }
-        schedule[dateStr].roleCounts[user.role]++;
-      }
-    });
-  });
-
-  // בחירת אנשים ליציאה
-  const selectedUsers = [];
-  const availableUsers = users.filter(user => {
-    const userRequests = existingRequests.filter(r => r.user_id === user.id);
-    return userRequests.length === 0; // רק אנשים ללא בקשות קיימות
-  });
-
-  // אלגוריתם בחירה חכם
-  availableUsers.forEach(user => {
-    const userScore = calculateUserScore(user, schedule, roleRequirements);
-    selectedUsers.push({ user, score: userScore });
-  });
-
-  selectedUsers.sort((a, b) => b.score - a.score);
-
-  // יצירת בקשות יציאה
-  const newRequests = [];
-  let currentDate = new Date(start);
-  
-  for (let i = 0; i < selectedUsers.length && currentDate < end; i++) {
-    const { user } = selectedUsers[i];
-    
-    // בדיקה אם יש מספיק אנשים בבסיס
-    const canTakeLeave = checkAvailability(user, currentDate, schedule, minPeopleInBase, roleRequirements);
-    
-    if (canTakeLeave) {
-      const leaveDuration = Math.min(maxLeaveDuration, Math.max(minLeaveDuration, 7)); // שבוע-שבוע
-      const endDate = new Date(currentDate);
-      endDate.setDate(endDate.getDate() + leaveDuration - 1);
-      
-      if (endDate <= end) {
-        newRequests.push({
-          userId: user.id,
-          userName: user.name,
-          startDate: currentDate.toISOString().split('T')[0],
-          endDate: endDate.toISOString().split('T')[0],
-          duration: leaveDuration,
-          reason: 'יציאה אופטימלית - שבוע-שבוע'
-        });
-        
-        // עדכון הלוח
-        for (let d = new Date(currentDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-          const dateStr = d.toISOString().split('T')[0];
-          if (schedule[dateStr]) {
-            schedule[dateStr].peopleInBase--;
-            schedule[dateStr].peopleOnLeave++;
-            if (schedule[dateStr].roleCounts[user.role]) {
-              schedule[dateStr].roleCounts[user.role]--;
-            }
-          }
-        }
-        
-        currentDate.setDate(currentDate.getDate() + leaveDuration);
-      }
-    }
-  }
-
-  // חישוב סטטיסטיקות
-  const peopleWithLeave = new Set(newRequests.map(r => r.userId)).size;
-  const averageLeaveDays = newRequests.length > 0 
-    ? Math.round(newRequests.reduce((sum, r) => sum + r.duration, 0) / newRequests.length)
-    : 0;
-  
-  const efficiency = Math.round((peopleWithLeave / users.length) * 100);
-
-  return {
-    requests: newRequests,
-    peopleWithLeave,
-    averageLeaveDays,
-    efficiency,
-    schedule: schedule
-  };
-}
-
-// פונקציות עזר לאופטימיזציה
-function calculateUserScore(user, schedule, roleRequirements) {
-  let score = 0;
-  
-  // עדיפות לאנשים עם פחות יציאות קודמות
-  score += 10;
-  
-  // עדיפות לתפקידים עם דרישות גבוהות
-  if (roleRequirements[user.role]) {
-    score += roleRequirements[user.role] * 5;
-  }
-  
-  // עדיפות לאנשים שפחות זמן בבסיס
-  Object.values(schedule).forEach(day => {
-    if (day.roleCounts[user.role] > 1) {
-      score += 2; // יש עוד אנשים באותו תפקיד
-    }
-  });
-  
-  return score;
-}
-
-function checkAvailability(user, date, schedule, minPeopleInBase, roleRequirements) {
-  const dateStr = date.toISOString().split('T')[0];
-  const daySchedule = schedule[dateStr];
-  
-  if (!daySchedule) return false;
-  
-  // בדיקת מינימום אנשים בבסיס
-  if (daySchedule.peopleInBase <= minPeopleInBase) return false;
-  
-  // בדיקת דרישות תפקידים
-  if (roleRequirements[user.role]) {
-    const currentRoleCount = daySchedule.roleCounts[user.role] || 0;
-    if (currentRoleCount <= roleRequirements[user.role]) return false;
-  }
-  
-  return true;
-}
 
 // Handle React routing, return all requests to React app
 app.get('*', (req, res) => {
