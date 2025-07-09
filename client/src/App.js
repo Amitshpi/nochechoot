@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import * as XLSX from 'xlsx';
 
 function App() {
   const [activeTab, setActiveTab] = useState('users');
@@ -633,6 +634,125 @@ function App() {
     }
   };
 
+  const exportCalendarToExcel = async () => {
+    try {
+      // יצירת טווח של 3 חודשים מהחודש הנוכחי
+      const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 3, 0);
+      
+      // טעינת נתוני נוכחות לכל התאריכים בטווח
+      const allDates = [];
+      const currentDate = new Date(startDate);
+      
+      while (currentDate <= endDate) {
+        allDates.push(new Date(currentDate).toISOString().split('T')[0]);
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+      
+      // יצירת מבנה נתונים לאקסל
+      const excelData = [];
+      
+      // כותרות - תאריכים
+      const headers = ['שם', 'דרגה', 'תפקיד'];
+      allDates.forEach(date => {
+        headers.push(new Date(date).toLocaleDateString('he-IL'));
+      });
+      excelData.push(headers);
+      
+      // נתונים לכל משתמש
+      for (const user of users) {
+        const userRow = [user.name, user.rank || '', user.role || ''];
+        
+        // בדיקת נוכחות לכל תאריך
+        for (const date of allDates) {
+          const userPresence = await getUserPresenceForDate(user.id, date);
+          userRow.push(userPresence);
+        }
+        
+        excelData.push(userRow);
+      }
+      
+      // יצירת קובץ אקסל
+      const ws = XLSX.utils.aoa_to_sheet(excelData);
+      
+      // הגדרת רוחב עמודות
+      const colWidths = [
+        { wch: 20 }, // שם
+        { wch: 10 }, // דרגה
+        { wch: 15 }, // תפקיד
+      ];
+      
+      // רוחב עמודות לתאריכים
+      allDates.forEach(() => {
+        colWidths.push({ wch: 12 });
+      });
+      
+      ws['!cols'] = colWidths;
+      
+      // הגדרת צבעים לתאים
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      
+      for (let R = 1; R <= range.e.r; R++) { // מתחיל מ-1 כדי לדלג על הכותרות
+        for (let C = 3; C <= range.e.c; C++) { // מתחיל מ-3 כדי לדלג על שם, דרגה, תפקיד
+          const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!ws[cellAddress]) continue;
+          
+          const cellValue = ws[cellAddress].v;
+          if (cellValue === 'בבסיס') {
+            ws[cellAddress].s = {
+              fill: { fgColor: { rgb: "90EE90" } }, // ירוק בהיר
+              font: { color: { rgb: "000000" } }
+            };
+          } else if (cellValue === 'לא בבסיס') {
+            ws[cellAddress].s = {
+              fill: { fgColor: { rgb: "FFB6C1" } }, // אדום בהיר
+              font: { color: { rgb: "000000" } }
+            };
+          }
+        }
+      }
+      
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'לוח שנה');
+      
+      // הורדת הקובץ
+      const fileName = `calendar_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+    } catch (error) {
+      console.error('Error exporting calendar to Excel:', error);
+      alert('שגיאה בייצוא לוח השנה לאקסל');
+    }
+  };
+
+  const getUserPresenceForDate = async (userId, date) => {
+    try {
+      const params = new URLSearchParams({ 
+        date, 
+        user_id: userId,
+        role: presenceFilters.role 
+      });
+      
+      const response = await fetch(`${API_BASE}/presence?${params}`);
+      const data = await response.json();
+      
+      // בדיקה אם המשתמש נוכח או נעדר
+      const isPresent = data.present.some(user => user.id === userId);
+      const isAbsent = data.absent.some(user => user.id === userId);
+      
+      if (isPresent) {
+        return 'בבסיס';
+      } else if (isAbsent) {
+        return 'לא בבסיס';
+      } else {
+        return 'לא ידוע';
+      }
+    } catch (error) {
+      console.error('Error getting user presence:', error);
+      return 'שגיאה';
+    }
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'pending': return 'warning';
@@ -1025,6 +1145,16 @@ function App() {
                   onClick={() => setViewMode('week')}
                 >
                   📊 שבוע
+                </button>
+              </div>
+              
+              <div className="export-section">
+                <button 
+                  className="export-btn"
+                  onClick={exportCalendarToExcel}
+                  title="ייצא לוח שנה לאקסל (3 חודשים)"
+                >
+                  📊 ייצא לאקסל
                 </button>
               </div>
               
