@@ -685,13 +685,32 @@ function calculateOptimalSchedule(users, requests, startDate, endDate) {
   // יצירת לוח שנה שבועי
   const weeks = generateWeeks(startDate, endDate);
   
+  // מעקב אחרי זמן שהייה בבסיס לכל אדם
+  const userBaseTime = {};
+  const userLeaveCount = {}; // מספר היציאות לכל אדם
+  users.forEach(user => {
+    userBaseTime[user.id] = 0; // שבועות רצופים בבסיס
+    userLeaveCount[user.id] = 0; // מספר היציאות
+  });
+  
   // מיון בקשות לפי עדיפות (תאריך מוקדם יותר = עדיפות גבוהה יותר)
   const sortedRequests = [...requests].sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
   
   // לכל שבוע, נחשב את היציאות האופטימליות
   weeks.forEach(week => {
-    const weekSchedule = calculateWeekSchedule(users, sortedRequests, week, minPeopleInBase);
+    const weekSchedule = calculateWeekScheduleWithFairness(users, sortedRequests, week, minPeopleInBase, userBaseTime, userLeaveCount);
     schedule.push(...weekSchedule);
+    
+    // עדכון זמן שהייה בבסיס ומספר יציאות
+    users.forEach(user => {
+      const hasLeave = weekSchedule.some(s => s.userId == user.id);
+      if (hasLeave) {
+        userBaseTime[user.id] = 0; // אופס, יש יציאה
+        userLeaveCount[user.id]++; // עוד יציאה
+      } else {
+        userBaseTime[user.id]++; // עוד שבוע בבסיס
+      }
+    });
   });
   
   return schedule;
@@ -723,8 +742,8 @@ function generateWeeks(startDate, endDate) {
   return weeks;
 }
 
-// פונקציה לחישוב יציאות לשבוע ספציפי
-function calculateWeekSchedule(users, requests, week, minPeopleInBase) {
+// פונקציה לחישוב יציאות לשבוע ספציפי עם חלוקה הוגנת
+function calculateWeekScheduleWithFairness(users, requests, week, minPeopleInBase, userBaseTime, userLeaveCount) {
   const weekSchedule = [];
   const availableUsers = [...users];
   const weekRequests = requests.filter(req => {
@@ -784,30 +803,71 @@ function calculateWeekSchedule(users, requests, week, minPeopleInBase) {
     }
   });
   
-  // אם יש אנשים זמינים, נחלק יציאות נוספות
+  // אם יש אנשים זמינים, נחלק יציאות נוספות בצורה הוגנת
   const remainingUsers = availableUsers.filter(u => 
     !weekSchedule.some(s => s.userId == u.id)
   );
   
   if (remainingUsers.length > 0) {
-    // חלוקה הוגנת של יציאות נוספות
-    const additionalLeaves = Math.min(remainingUsers.length, 2); // מקסימום 2 יציאות נוספות לשבוע
+    // מיון אנשים לפי עדיפות: זמן שהייה בבסיס + מספר יציאות
+    remainingUsers.sort((a, b) => {
+      const timeA = userBaseTime[a.id] || 0;
+      const timeB = userBaseTime[b.id] || 0;
+      const leavesA = userLeaveCount[a.id] || 0;
+      const leavesB = userLeaveCount[b.id] || 0;
+      
+      // עדיפות למי שנמצא יותר זמן בבסיס ופחות יציאות
+      const priorityA = timeA * 2 - leavesA; // משקל כפול לזמן בבסיס
+      const priorityB = timeB * 2 - leavesB;
+      
+      return priorityB - priorityA;
+    });
     
-    for (let i = 0; i < additionalLeaves; i++) {
-      const user = remainingUsers[i];
-      weekSchedule.push({
-        userId: user.id,
-        userName: user.name,
-        userRank: user.rank,
-        userRole: user.role,
-        startDate: week.startStr,
-        endDate: week.endStr,
-        reason: 'יציאה אוטומטית',
-        requestId: null,
-        priority: 'low',
-        hasConflict: false,
-        week: week.startStr
+    // העדפה מיוחדת למי שנמצא בבסיס יותר משבוע
+    const usersNeedingLeave = remainingUsers.filter(user => {
+      const timeInBase = userBaseTime[user.id] || 0;
+      return timeInBase >= 1; // יותר משבוע בבסיס
+    });
+    
+    // אם יש אנשים שצריכים יציאה, נוודא שהם יקבלו עדיפות
+    if (usersNeedingLeave.length > 0) {
+      // מיון מחדש עם עדיפות למי שצריך יציאה
+      remainingUsers.sort((a, b) => {
+        const timeA = userBaseTime[a.id] || 0;
+        const timeB = userBaseTime[b.id] || 0;
+        const needsLeaveA = timeA >= 1 ? 10 : 0; // בונוס גדול למי שצריך יציאה
+        const needsLeaveB = timeB >= 1 ? 10 : 0;
+        
+        return needsLeaveB - needsLeaveA;
       });
+    }
+    
+    // חלוקה הוגנת של יציאות נוספות
+    const maxAdditionalLeaves = Math.min(remainingUsers.length, Math.floor(remainingUsers.length / 2)); // מקסימום חצי מהאנשים
+    
+    for (let i = 0; i < maxAdditionalLeaves; i++) {
+      const user = remainingUsers[i];
+      
+      // בדיקה אם יש מספיק אנשים בבסיס
+      const peopleInBaseAfterLeave = availableUsers.length - weekSchedule.length - i - 1;
+      
+      if (peopleInBaseAfterLeave >= minPeopleInBase) {
+        weekSchedule.push({
+          userId: user.id,
+          userName: user.name,
+          userRank: user.rank,
+          userRole: user.role,
+          startDate: week.startStr,
+          endDate: week.endStr,
+          reason: 'יציאה אוטומטית - חלוקה הוגנת',
+          requestId: null,
+          priority: 'low',
+          hasConflict: false,
+          week: week.startStr
+        });
+      } else {
+        break; // לא מספיק אנשים בבסיס
+      }
     }
   }
   
