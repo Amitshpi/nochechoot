@@ -897,6 +897,95 @@ app.get('/api/schedule-summary', async (req, res) => {
   }
 });
 
+// קבלת לוח שנה מלא עם כל האנשים
+app.get('/api/full-schedule', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    if (!startDate || !endDate) {
+      return res.status(400).json({ error: 'נדרשים תאריכי התחלה וסיום' });
+    }
+    
+    // קבלת כל האנשים
+    const users = await db.all('SELECT * FROM users ORDER BY name');
+    
+    // קבלת לוח הזמנים המחושב
+    const scheduleQuery = process.env.NODE_ENV === 'production' 
+      ? 'SELECT * FROM leave_schedule WHERE start_date >= $1 AND end_date <= $2 ORDER BY start_date'
+      : 'SELECT * FROM leave_schedule WHERE start_date >= ? AND end_date <= ? ORDER BY start_date';
+    
+    const schedule = await db.all(scheduleQuery, [startDate, endDate]);
+    
+    // יצירת לוח שנה יומי
+    const dailySchedule = [];
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+      const dateStr = date.toISOString().split('T')[0];
+      const daySchedule = {
+        date: dateStr,
+        dateDisplay: date.toLocaleDateString('he-IL'),
+        dayOfWeek: date.toLocaleDateString('he-IL', { weekday: 'long' }),
+        people: []
+      };
+      
+      // לכל אדם, נבדוק אם הוא בבית או בבסיס
+      users.forEach(user => {
+        const userSchedule = schedule.find(s => 
+          s.user_id == user.id && 
+          s.start_date <= dateStr && 
+          s.end_date >= dateStr
+        );
+        
+        if (userSchedule) {
+          // האדם בבית
+          daySchedule.people.push({
+            id: user.id,
+            name: user.name,
+            rank: user.rank,
+            role: user.role,
+            status: 'away',
+            reason: userSchedule.reason,
+            priority: userSchedule.priority,
+            hasConflict: userSchedule.has_conflict,
+            conflictReason: userSchedule.conflict_reason
+          });
+        } else {
+          // האדם בבסיס
+          daySchedule.people.push({
+            id: user.id,
+            name: user.name,
+            rank: user.rank,
+            role: user.role,
+            status: 'in_base',
+            reason: null,
+            priority: null,
+            hasConflict: false,
+            conflictReason: null
+          });
+        }
+      });
+      
+      dailySchedule.push(daySchedule);
+    }
+    
+    res.json({
+      dailySchedule,
+      summary: {
+        totalUsers: users.length,
+        totalDays: dailySchedule.length,
+        totalLeaves: schedule.length,
+        conflicts: schedule.filter(s => s.has_conflict).length
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error getting full schedule:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Handle React routing, return all requests to React app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
