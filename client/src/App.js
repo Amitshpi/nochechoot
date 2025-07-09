@@ -53,6 +53,33 @@ function App() {
   const [selectedDayDetails, setSelectedDayDetails] = useState(null);
   const [showDayModal, setShowDayModal] = useState(false);
 
+  // מצבי טעינה
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [isLoadingRoles, setIsLoadingRoles] = useState(false);
+  const [isLoadingPresence, setIsLoadingPresence] = useState(false);
+  const [isLoadingActivity, setIsLoadingActivity] = useState(false);
+  const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
+  const [isLoadingWeekly, setIsLoadingWeekly] = useState(false);
+  const [isLoadingDayDetails, setIsLoadingDayDetails] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
+
+  // הגדרות אופטימיזציה
+  const [optimizationSettings, setOptimizationSettings] = useState({
+    minPeopleInBase: 10,
+    roleRequirements: {},
+    minLeaveDuration: 7, // ימים מינימליים ליציאה
+    maxLeaveDuration: 21, // ימים מקסימליים ליציאה
+    preferredPattern: 'week-week', // שבוע-שבוע
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 90 ימים קדימה
+  });
+
+  // תוצאות אופטימיזציה
+  const [optimizationResults, setOptimizationResults] = useState(null);
+  const [showOptimizationModal, setShowOptimizationModal] = useState(false);
+
   const API_BASE = '/api';
 
   // טעינת נתונים
@@ -507,26 +534,64 @@ function App() {
 
   const exportData = async (type) => {
     try {
-      const params = new URLSearchParams({
-        type,
-        start_date: requestFilters.start_date || new Date().toISOString().split('T')[0],
-        end_date: requestFilters.end_date || new Date().toISOString().split('T')[0],
-        role: presenceFilters.role
-      });
-      
-      const response = await fetch(`${API_BASE}/export?${params}`);
-      const data = await response.json();
-      
-      // יצירת קובץ להורדה
-      const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
+      const response = await fetch(`${API_BASE}/export/${type}`);
+      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = data.filename;
+      a.download = `${type}_export.xlsx`;
       a.click();
-      window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error exporting data:', error);
+    }
+  };
+
+  const optimizeLeaveSchedule = async () => {
+    setIsOptimizing(true);
+    try {
+      const response = await fetch(`${API_BASE}/optimize-leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(optimizationSettings)
+      });
+      
+      if (response.ok) {
+        const results = await response.json();
+        setOptimizationResults(results);
+        setShowOptimizationModal(true);
+      } else {
+        console.error('Optimization failed');
+      }
+    } catch (error) {
+      console.error('Error optimizing leave schedule:', error);
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+  const applyOptimizationResults = async () => {
+    if (!optimizationResults) return;
+    
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`${API_BASE}/apply-optimization`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: optimizationResults.requests })
+      });
+      
+      if (response.ok) {
+        setShowOptimizationModal(false);
+        setOptimizationResults(null);
+        loadRequests(requestFilters);
+        loadPresence();
+        loadActivity();
+        alert('לוח היציאות הוחל בהצלחה!');
+      }
+    } catch (error) {
+      console.error('Error applying optimization:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -623,6 +688,12 @@ function App() {
         >
           ניהול תפקידים
         </button>
+        <button 
+          className={activeTab === 'optimization' ? 'active' : ''} 
+          onClick={() => setActiveTab('optimization')}
+        >
+          🧠 אופטימיזציה
+        </button>
       </nav>
 
       <main className="content">
@@ -643,7 +714,7 @@ function App() {
                 onChange={(e) => setUserFilters({...userFilters, role: e.target.value})}
               >
                 <option value="">כל התפקידים</option>
-                {roles.map(role => (
+                {(Array.isArray(roles) ? roles : []).map(role => (
                   <option key={role.id} value={role.name}>{role.name}</option>
                 ))}
               </select>
@@ -669,7 +740,7 @@ function App() {
                 required
               >
                 <option value="">בחר תפקיד</option>
-                {roles.map(role => (
+                {(Array.isArray(roles) ? roles : []).map(role => (
                   <option key={role.id} value={role.name}>{role.name}</option>
                 ))}
               </select>
@@ -688,9 +759,9 @@ function App() {
               <button type="submit">הוסף אדם</button>
             </form>
 
-            <h3>רשימת אנשים ({users.length})</h3>
+            <h3>רשימת אנשים ({(Array.isArray(users) ? users : []).length})</h3>
             <div className="list">
-              {users.map(user => (
+              {(Array.isArray(users) ? users : []).map(user => (
                 <div key={user.id} className="item">
                   <div className="user-info">
                     <strong>{user.name}</strong>
@@ -739,7 +810,7 @@ function App() {
                 onChange={(e) => setRequestFilters({...requestFilters, user_id: e.target.value})}
               >
                 <option value="">כל האנשים</option>
-                {users.map(user => (
+                {(Array.isArray(users) ? users : []).map(user => (
                   <option key={user.id} value={user.id}>{user.name}</option>
                 ))}
               </select>
@@ -764,7 +835,7 @@ function App() {
                 required
               >
                 <option value="">בחר אדם</option>
-                {users.map(user => (
+                {(Array.isArray(users) ? users : []).map(user => (
                   <option key={user.id} value={user.id}>{user.name}</option>
                 ))}
               </select>
@@ -790,9 +861,9 @@ function App() {
               <button type="submit">הוסף בקשת יציאה</button>
             </form>
 
-            <h3>בקשות יציאה ({requests.length})</h3>
+            <h3>בקשות יציאה ({(Array.isArray(requests) ? requests : []).length})</h3>
             <div className="list">
-              {requests.map(request => (
+              {(Array.isArray(requests) ? requests : []).map(request => (
                 <div key={request.id} className="item">
                   <div className="request-info">
                     <strong>{request.name}</strong>
@@ -862,7 +933,7 @@ function App() {
                   onChange={(e) => setPresenceFilters({...presenceFilters, role: e.target.value})}
                 >
                   <option value="">כל התפקידים</option>
-                  {roles.map(role => (
+                  {(Array.isArray(roles) ? roles : []).map(role => (
                     <option key={role.id} value={role.name}>{role.name}</option>
                   ))}
                 </select>
@@ -871,9 +942,9 @@ function App() {
 
             <div className="presence-grid">
               <div className="present-section">
-                <h3>נמצאים בבסיס ({presence.present.length})</h3>
+                <h3>נמצאים בבסיס ({(Array.isArray(presence.present) ? presence.present : []).length})</h3>
                 <div className="list">
-                  {presence.present.map(user => (
+                  {(Array.isArray(presence.present) ? presence.present : []).map(user => (
                     <div key={user.id} className="item present">
                       <strong>{user.name}</strong>
                       {user.rank && <span> - {user.rank}</span>}
@@ -884,9 +955,9 @@ function App() {
               </div>
 
               <div className="absent-section">
-                <h3>לא נמצאים בבסיס ({presence.absent.length})</h3>
+                <h3>לא נמצאים בבסיס ({(Array.isArray(presence.absent) ? presence.absent : []).length})</h3>
                 <div className="list">
-                  {presence.absent.map(user => (
+                  {(Array.isArray(presence.absent) ? presence.absent : []).map(user => (
                     <div key={user.id} className="item absent">
                       <strong>{user.name}</strong>
                       {user.rank && <span> - {user.rank}</span>}
@@ -944,7 +1015,7 @@ function App() {
                     onChange={(e) => setPresenceFilters({...presenceFilters, role: e.target.value})}
                   >
                     <option value="">כל התפקידים</option>
-                    {roles.map(role => (
+                    {(Array.isArray(roles) ? roles : []).map(role => (
                       <option key={role.id} value={role.name}>{role.name}</option>
                     ))}
                   </select>
@@ -952,7 +1023,7 @@ function App() {
                   <div className="multi-role-selector">
                     <label>בחר תפקידים:</label>
                     <div className="role-checkboxes">
-                      {roles.map(role => (
+                      {(Array.isArray(roles) ? roles : []).map(role => (
                         <label key={role.id} className="role-checkbox">
                           <input
                             type="checkbox"
@@ -1001,7 +1072,7 @@ function App() {
                   <div key={`empty-${i}`} className="calendar-day empty"></div>
                 ))}
                 
-                {calendarData.map(day => (
+                {(Array.isArray(calendarData) ? calendarData : []).map(day => (
                   <div 
                     key={day.date} 
                     className={getDayClassName(day)}
@@ -1009,7 +1080,7 @@ function App() {
                   >
                     <div className="day-number">{day.day}</div>
                     {hasRoleConflict(day) && (
-                      <div className="conflict-indicator" title={`קונפליקט תפקידים: ${day.conflicts.map(c => `${c.role} (${c.count} אנשים)`).join(', ')}`}>
+                                              <div className="conflict-indicator" title={`קונפליקט תפקידים: ${(day.conflicts || []).map(c => `${c.role} (${c.count} אנשים)`).join(', ')}`}>
                         ⚠️
                       </div>
                     )}
@@ -1024,7 +1095,7 @@ function App() {
               </div>
             ) : (
               <div className="weekly-grid">
-                {weeklyData.map(day => (
+                {(Array.isArray(weeklyData) ? weeklyData : []).map(day => (
                   <div 
                     key={day.date} 
                     className={getWeeklyDayClassName(day)}
@@ -1034,7 +1105,7 @@ function App() {
                       <div className="day-name">{day.dayName}</div>
                       <div className="day-number">{day.day}</div>
                       {hasRoleConflict(day) && (
-                        <div className="conflict-indicator" title={`קונפליקט תפקידים: ${day.conflicts.map(c => `${c.role} (${c.count} אנשים)`).join(', ')}`}>
+                        <div className="conflict-indicator" title={`קונפליקט תפקידים: ${(day.conflicts || []).map(c => `${c.role} (${c.count} אנשים)`).join(', ')}`}>
                           ⚠️
                         </div>
                       )}
@@ -1082,11 +1153,11 @@ function App() {
                       <div className="conflicts-section">
                         <h4>⚠️ קונפליקטים בתפקידים</h4>
                         <div className="conflicts-list">
-                          {selectedDayDetails.conflicts.map((conflict, index) => (
+                          {(Array.isArray(selectedDayDetails.conflicts) ? selectedDayDetails.conflicts : []).map((conflict, index) => (
                             <div key={index} className="conflict-item">
                               <strong>{conflict.role}</strong> - {conflict.count} אנשים יוצאים:
                               <ul>
-                                {conflict.users.map((user, userIndex) => (
+                                {(Array.isArray(conflict.users) ? conflict.users : []).map((user, userIndex) => (
                                   <li key={userIndex}>{user.name} ({user.rank})</li>
                                 ))}
                               </ul>
@@ -1100,7 +1171,7 @@ function App() {
                       <div className="present-section">
                         <h4>✅ נמצאים בבסיס ({selectedDayDetails.present.length})</h4>
                         <div className="user-list">
-                          {selectedDayDetails.present.map(user => (
+                          {(Array.isArray(selectedDayDetails.present) ? selectedDayDetails.present : []).map(user => (
                             <div key={user.id} className="user-item present">
                               <span className="user-name">{user.name}</span>
                               {user.rank && <span className="user-rank"> - {user.rank}</span>}
@@ -1113,7 +1184,7 @@ function App() {
                       <div className="absent-section">
                         <h4>❌ לא נמצאים בבסיס - אושר ({selectedDayDetails.absent.length})</h4>
                         <div className="user-list">
-                          {selectedDayDetails.absent.map(user => (
+                          {(Array.isArray(selectedDayDetails.absent) ? selectedDayDetails.absent : []).map(user => (
                             <div key={user.id} className="user-item absent">
                               <span className="user-name">{user.name}</span>
                               {user.rank && <span className="user-rank"> - {user.rank}</span>}
@@ -1127,7 +1198,7 @@ function App() {
                         <div className="pending-section">
                           <h4>⏳ ממתינים לאישור ({selectedDayDetails.pending.length})</h4>
                           <div className="user-list">
-                            {selectedDayDetails.pending.map(user => (
+                            {(Array.isArray(selectedDayDetails.pending) ? selectedDayDetails.pending : []).map(user => (
                               <div key={user.id} className="user-item pending">
                                 <span className="user-name">{user.name}</span>
                                 {user.rank && <span className="user-rank"> - {user.rank}</span>}
@@ -1142,7 +1213,7 @@ function App() {
                         <div className="rejected-section">
                           <h4>🚫 נדחו ({selectedDayDetails.rejected.length})</h4>
                           <div className="user-list">
-                            {selectedDayDetails.rejected.map(user => (
+                            {(Array.isArray(selectedDayDetails.rejected) ? selectedDayDetails.rejected : []).map(user => (
                               <div key={user.id} className="user-item rejected">
                                 <span className="user-name">{user.name}</span>
                                 {user.rank && <span className="user-rank"> - {user.rank}</span>}
@@ -1187,9 +1258,9 @@ function App() {
               <button type="submit">הוסף תפקיד</button>
             </form>
 
-            <h3>רשימת תפקידים ({roles.length})</h3>
+            <h3>רשימת תפקידים ({(Array.isArray(roles) ? roles : []).length})</h3>
             <div className="list">
-              {roles.map(role => (
+              {(Array.isArray(roles) ? roles : []).map(role => (
                 <div key={role.id} className="item">
                   <div className="role-info">
                     <strong>{role.name}</strong>
@@ -1218,6 +1289,111 @@ function App() {
           </div>
         )}
 
+        {activeTab === 'optimization' && (
+          <div className="tab-content">
+            <h2>🧠 אופטימיזציה אוטומטית ללוח יציאות</h2>
+            
+            <div className="optimization-settings">
+              <h3>הגדרות אופטימיזציה</h3>
+              
+              <div className="settings-grid">
+                <div className="setting-group">
+                  <label>מינימום אנשים בבסיס בכל זמן:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={optimizationSettings.minPeopleInBase}
+                    onChange={(e) => setOptimizationSettings({
+                      ...optimizationSettings,
+                      minPeopleInBase: parseInt(e.target.value)
+                    })}
+                  />
+                </div>
+                
+                <div className="setting-group">
+                  <label>מינימום ימי יציאה:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={optimizationSettings.minLeaveDuration}
+                    onChange={(e) => setOptimizationSettings({
+                      ...optimizationSettings,
+                      minLeaveDuration: parseInt(e.target.value)
+                    })}
+                  />
+                </div>
+                
+                <div className="setting-group">
+                  <label>מקסימום ימי יציאה:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={optimizationSettings.maxLeaveDuration}
+                    onChange={(e) => setOptimizationSettings({
+                      ...optimizationSettings,
+                      maxLeaveDuration: parseInt(e.target.value)
+                    })}
+                  />
+                </div>
+                
+                <div className="setting-group">
+                  <label>תאריך התחלה:</label>
+                  <input
+                    type="date"
+                    value={optimizationSettings.startDate}
+                    onChange={(e) => setOptimizationSettings({
+                      ...optimizationSettings,
+                      startDate: e.target.value
+                    })}
+                  />
+                </div>
+                
+                <div className="setting-group">
+                  <label>תאריך סיום:</label>
+                  <input
+                    type="date"
+                    value={optimizationSettings.endDate}
+                    onChange={(e) => setOptimizationSettings({
+                      ...optimizationSettings,
+                      endDate: e.target.value
+                    })}
+                  />
+                </div>
+              </div>
+              
+              <div className="role-requirements">
+                <h4>דרישות תפקידים מינימליות:</h4>
+                {(Array.isArray(roles) ? roles : []).map(role => (
+                  <div key={role.id} className="role-requirement">
+                    <label>{role.name}:</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={optimizationSettings.roleRequirements[role.name] || 0}
+                      onChange={(e) => setOptimizationSettings({
+                        ...optimizationSettings,
+                        roleRequirements: {
+                          ...optimizationSettings.roleRequirements,
+                          [role.name]: parseInt(e.target.value) || 0
+                        }
+                      })}
+                    />
+                  </div>
+                ))}
+              </div>
+              
+              <button 
+                className="optimize-btn"
+                onClick={optimizeLeaveSchedule}
+                disabled={isOptimizing}
+              >
+                {isOptimizing ? '🧠 מחשב...' : '🧠 צור לוח יציאות אופטימלי'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'activity' && (
           <div className="tab-content">
             <h2>היסטוריית פעילות</h2>
@@ -1232,7 +1408,7 @@ function App() {
             </div>
 
             <div className="activity-list">
-              {activity.map(item => (
+              {(activity || []).map(item => (
                 <div key={item.id} className="activity-item">
                   <div className="activity-time">
                     {new Date(item.created_at).toLocaleString('he-IL')}
@@ -1280,7 +1456,7 @@ function App() {
                   required
                 >
                   <option value="">בחר תפקיד</option>
-                  {roles.map(role => (
+                  {(Array.isArray(roles) ? roles : []).map(role => (
                     <option key={role.id} value={role.name}>{role.name}</option>
                   ))}
                 </select>
@@ -1320,9 +1496,9 @@ function App() {
                   required
                 >
                   <option value="">בחר אדם</option>
-                  {users.map(user => (
-                    <option key={user.id} value={user.id}>{user.name}</option>
-                  ))}
+                                  {(Array.isArray(users) ? users : []).map(user => (
+                  <option key={user.id} value={user.id}>{user.name}</option>
+                ))}
                 </select>
                 <input
                   type="date"
@@ -1385,6 +1561,77 @@ function App() {
                   <button type="button" onClick={cancelEdit} className="cancel-btn">ביטול</button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* מודל תוצאות אופטימיזציה */}
+        {showOptimizationModal && optimizationResults && (
+          <div className="modal-overlay" onClick={() => setShowOptimizationModal(false)}>
+            <div className="modal-content optimization-results" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>🧠 תוצאות אופטימיזציה</h3>
+                <button className="close-btn" onClick={() => setShowOptimizationModal(false)}>✕</button>
+              </div>
+              
+              <div className="modal-body">
+                <div className="optimization-summary">
+                  <h4>סיכום התוצאות:</h4>
+                  <div className="summary-stats">
+                    <div className="stat">
+                      <span className="label">בקשות יציאה שנוצרו:</span>
+                      <span className="value">{optimizationResults.requests.length}</span>
+                    </div>
+                    <div className="stat">
+                      <span className="label">אנשים שזכו ליציאה:</span>
+                      <span className="value">{optimizationResults.peopleWithLeave}</span>
+                    </div>
+                    <div className="stat">
+                      <span className="label">ממוצע ימי יציאה:</span>
+                      <span className="value">{optimizationResults.averageLeaveDays} ימים</span>
+                    </div>
+                    <div className="stat">
+                      <span className="label">יעילות אופטימיזציה:</span>
+                      <span className="value">{optimizationResults.efficiency}%</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="optimization-details">
+                  <h4>פירוט בקשות יציאה:</h4>
+                  <div className="requests-list">
+                    {optimizationResults.requests.map((request, index) => (
+                      <div key={index} className="optimization-request">
+                        <div className="request-info">
+                          <strong>{request.userName}</strong>
+                          <span> - {new Date(request.startDate).toLocaleDateString('he-IL')}</span>
+                          <span> עד {new Date(request.endDate).toLocaleDateString('he-IL')}</span>
+                          <span className="duration">({request.duration} ימים)</span>
+                        </div>
+                        <div className="request-reason">
+                          יציאה אופטימלית - {request.reason}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="modal-actions">
+                  <button 
+                    className="apply-btn"
+                    onClick={applyOptimizationResults}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? 'מחיל...' : 'החל את התוצאות'}
+                  </button>
+                  <button 
+                    className="cancel-btn"
+                    onClick={() => setShowOptimizationModal(false)}
+                  >
+                    ביטול
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
