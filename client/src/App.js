@@ -70,6 +70,9 @@ function App() {
   const [scheduleEndDate, setScheduleEndDate] = useState('');
   const [leaveSchedule, setLeaveSchedule] = useState([]);
   const [scheduleSummary, setScheduleSummary] = useState(null);
+  const [fullSchedule, setFullSchedule] = useState([]);
+  const [fullScheduleSummary, setFullScheduleSummary] = useState(null);
+  const [isLoadingFullSchedule, setIsLoadingFullSchedule] = useState(false);
 
   const API_BASE = '/api';
 
@@ -180,6 +183,8 @@ function App() {
       if (data.success) {
         setLeaveSchedule(data.schedule);
         setScheduleSummary(data.summary);
+        // טעינת לוח השנה המלא
+        await loadFullSchedule();
         alert(`לוח הזמנים חושב בהצלחה! ${data.summary.scheduledLeaves} יציאות מתוכננות, ${data.summary.conflicts} קונפליקטים`);
       }
     } catch (error) {
@@ -215,6 +220,24 @@ function App() {
       setScheduleSummary(data);
     } catch (error) {
       console.error('Error loading schedule summary:', error);
+    }
+  };
+
+  const loadFullSchedule = async () => {
+    try {
+      setIsLoadingFullSchedule(true);
+      const params = new URLSearchParams({
+        startDate: scheduleStartDate,
+        endDate: scheduleEndDate
+      });
+      const response = await fetch(`${API_BASE}/full-schedule?${params}`);
+      const data = await response.json();
+      setFullSchedule(data.dailySchedule);
+      setFullScheduleSummary(data.summary);
+    } catch (error) {
+      console.error('Error loading full schedule:', error);
+    } finally {
+      setIsLoadingFullSchedule(false);
     }
   };
 
@@ -1404,34 +1427,61 @@ function App() {
                 <div className="loading-spinner"></div>
                 <p>מחשב לוח זמנים...</p>
               </div>
-            ) : leaveSchedule.length > 0 ? (
+            ) : fullSchedule.length > 0 ? (
               <div className="schedule-results">
-                <h3>לוח הזמנים המחושב</h3>
-                <div className="schedule-list">
-                  {leaveSchedule.map((item, index) => (
-                    <div key={index} className={`schedule-item ${item.hasConflict ? 'conflict' : ''} ${item.priority}`}>
-                      <div className="schedule-header">
-                        <div className="user-info">
-                          <strong>{item.userName}</strong>
-                          {item.userRank && <span> - {item.userRank}</span>}
-                          {item.userRole && <span> ({item.userRole})</span>}
-                        </div>
-                        <div className="schedule-badges">
-                          {item.priority === 'high' && <span className="badge high-priority">בקשה מקורית</span>}
-                          {item.priority === 'low' && <span className="badge low-priority">יציאה אוטומטית</span>}
-                          {item.hasConflict && <span className="badge conflict">קונפליקט</span>}
+                <h3>לוח השנה המלא</h3>
+                <div className="full-schedule-controls">
+                  <button 
+                    onClick={loadFullSchedule}
+                    disabled={isLoadingFullSchedule}
+                    className="refresh-btn"
+                  >
+                    {isLoadingFullSchedule ? 'מעדכן...' : '🔄 עדכן לוח שנה'}
+                  </button>
+                </div>
+                
+                <div className="full-schedule-calendar">
+                  {fullSchedule.map((day, dayIndex) => (
+                    <div key={dayIndex} className="day-schedule">
+                      <div className="day-header">
+                        <div className="day-date">{day.dateDisplay}</div>
+                        <div className="day-name">{day.dayOfWeek}</div>
+                        <div className="day-stats">
+                          <span className="in-base">🏠 {day.people.filter(p => p.status === 'in_base').length}</span>
+                          <span className="away">🏠 {day.people.filter(p => p.status === 'away').length}</span>
                         </div>
                       </div>
-                      <div className="schedule-details">
-                        <div className="dates">
-                          <span>📅 {new Date(item.startDate).toLocaleDateString('he-IL')}</span>
-                          <span>עד {new Date(item.endDate).toLocaleDateString('he-IL')}</span>
+                      
+                      <div className="day-people">
+                        <div className="in-base-section">
+                          <h4>🏠 בבסיס ({day.people.filter(p => p.status === 'in_base').length})</h4>
+                          <div className="people-list">
+                            {day.people.filter(p => p.status === 'in_base').map(person => (
+                              <div key={person.id} className="person-item in-base">
+                                <span className="person-name">{person.name}</span>
+                                {person.rank && <span className="person-rank"> - {person.rank}</span>}
+                                {person.role && <span className="person-role"> ({person.role})</span>}
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                        {item.reason && <div className="reason">סיבה: {item.reason}</div>}
-                        {item.hasConflict && item.conflictReason && (
-                          <div className="conflict-reason">⚠️ {item.conflictReason}</div>
-                        )}
-                        <div className="week">שבוע: {new Date(item.week).toLocaleDateString('he-IL')}</div>
+                        
+                        <div className="away-section">
+                          <h4>🏠 בבית ({day.people.filter(p => p.status === 'away').length})</h4>
+                          <div className="people-list">
+                            {day.people.filter(p => p.status === 'away').map(person => (
+                              <div key={person.id} className={`person-item away ${person.hasConflict ? 'conflict' : ''} ${person.priority}`}>
+                                <span className="person-name">{person.name}</span>
+                                {person.rank && <span className="person-rank"> - {person.rank}</span>}
+                                {person.role && <span className="person-role"> ({person.role})</span>}
+                                {person.reason && <span className="person-reason"> - {person.reason}</span>}
+                                {person.hasConflict && <span className="conflict-indicator">⚠️</span>}
+                                {person.priority === 'high' && <span className="priority-badge">בקשה</span>}
+                                {person.priority === 'low' && <span className="priority-badge auto">אוטומטי</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ))}
