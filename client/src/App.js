@@ -112,33 +112,42 @@ function App() {
 
   const loadUsers = async (filters = {}) => {
     try {
+      setIsLoadingUsers(true);
       const params = new URLSearchParams(filters);
       const response = await fetch(`${API_BASE}/users?${params}`);
       const data = await response.json();
       setUsers(data);
     } catch (error) {
       console.error('Error loading users:', error);
+    } finally {
+      setIsLoadingUsers(false);
     }
   };
 
   const loadRequests = async (filters = {}) => {
     try {
+      setIsLoadingRequests(true);
       const params = new URLSearchParams(filters);
       const response = await fetch(`${API_BASE}/requests?${params}`);
       const data = await response.json();
       setRequests(data);
     } catch (error) {
       console.error('Error loading requests:', error);
+    } finally {
+      setIsLoadingRequests(false);
     }
   };
 
   const loadRoles = async () => {
     try {
+      setIsLoadingRoles(true);
       const response = await fetch(`${API_BASE}/roles`);
       const data = await response.json();
       setRoles(data);
     } catch (error) {
       console.error('Error loading roles:', error);
+    } finally {
+      setIsLoadingRoles(false);
     }
   };
 
@@ -146,27 +155,34 @@ function App() {
 
   const loadPresence = async () => {
     try {
+      setIsLoadingPresence(true);
       const params = new URLSearchParams({ date: selectedDate, ...presenceFilters });
       const response = await fetch(`${API_BASE}/presence?${params}`);
       const data = await response.json();
       setPresence(data);
     } catch (error) {
       console.error('Error loading presence:', error);
+    } finally {
+      setIsLoadingPresence(false);
     }
   };
 
   const loadActivity = async () => {
     try {
+      setIsLoadingActivity(true);
       const response = await fetch(`${API_BASE}/activity`);
       const data = await response.json();
       setActivity(data);
     } catch (error) {
       console.error('Error loading activity:', error);
+    } finally {
+      setIsLoadingActivity(false);
     }
   };
 
   const loadCalendarData = async () => {
     try {
+      setIsLoadingCalendar(true);
       const year = currentMonth.getFullYear();
       const month = currentMonth.getMonth() + 1;
       const daysInMonth = new Date(year, month, 0).getDate();
@@ -222,11 +238,14 @@ function App() {
       setCalendarData(calendarDays);
     } catch (error) {
       console.error('Error loading calendar data:', error);
+    } finally {
+      setIsLoadingCalendar(false);
     }
   };
 
   const loadWeeklyData = async () => {
     try {
+      setIsLoadingWeekly(true);
       const startOfWeek = new Date(currentWeek);
       startOfWeek.setDate(currentWeek.getDate() - currentWeek.getDay());
       
@@ -285,11 +304,14 @@ function App() {
       setWeeklyData(weeklyDays);
     } catch (error) {
       console.error('Error loading weekly data:', error);
+    } finally {
+      setIsLoadingWeekly(false);
     }
   };
 
   const loadDayDetails = async (date) => {
     try {
+      setIsLoadingDayDetails(true);
       let params;
       if (useMultiRoleFilter && selectedRoles.length > 0) {
         params = new URLSearchParams({ 
@@ -326,12 +348,15 @@ function App() {
       setShowDayModal(true);
     } catch (error) {
       console.error('Error loading day details:', error);
+    } finally {
+      setIsLoadingDayDetails(false);
     }
   };
 
   const addUser = async (e) => {
     e.preventDefault();
     try {
+      setIsSubmitting(true);
       const response = await fetch(`${API_BASE}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -344,12 +369,15 @@ function App() {
       }
     } catch (error) {
       console.error('Error adding user:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const addRequest = async (e) => {
     e.preventDefault();
     try {
+      setIsSubmitting(true);
       const response = await fetch(`${API_BASE}/requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -363,6 +391,8 @@ function App() {
       }
     } catch (error) {
       console.error('Error adding request:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -419,6 +449,7 @@ function App() {
   const addRole = async (e) => {
     e.preventDefault();
     try {
+      setIsSubmitting(true);
       const response = await fetch(`${API_BASE}/roles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -431,6 +462,8 @@ function App() {
       }
     } catch (error) {
       console.error('Error adding role:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -756,10 +789,13 @@ function App() {
                 value={newUser.email}
                 onChange={(e) => setNewUser({...newUser, email: e.target.value})}
               />
-              <button type="submit">הוסף אדם</button>
+              <button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? '⏳ מוסיף...' : 'הוסף אדם'}
+              </button>
             </form>
 
             <h3>רשימת אנשים ({(Array.isArray(users) ? users : []).length})</h3>
+            {isLoadingUsers && <div className="loading">⏳ טוען אנשים...</div>}
             <div className="list">
               {(Array.isArray(users) ? users : []).map(user => (
                 <div key={user.id} className="item">
@@ -858,10 +894,13 @@ function App() {
                 value={newRequest.reason}
                 onChange={(e) => setNewRequest({...newRequest, reason: e.target.value})}
               />
-              <button type="submit">הוסף בקשת יציאה</button>
+              <button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? '⏳ מוסיף...' : 'הוסף בקשת יציאה'}
+              </button>
             </form>
 
             <h3>בקשות יציאה ({(Array.isArray(requests) ? requests : []).length})</h3>
+            {isLoadingRequests && <div className="loading">⏳ טוען בקשות...</div>}
             <div className="list">
               {(Array.isArray(requests) ? requests : []).map(request => (
                 <div key={request.id} className="item">
@@ -940,6 +979,7 @@ function App() {
               </div>
             </div>
 
+            {isLoadingPresence && <div className="loading">⏳ טוען נתוני נוכחות...</div>}
             <div className="presence-grid">
               <div className="present-section">
                 <h3>נמצאים בבסיס ({(Array.isArray(presence.present) ? presence.present : []).length})</h3>
@@ -1062,7 +1102,9 @@ function App() {
             </div>
 
             {viewMode === 'month' ? (
-              <div className="calendar-grid">
+              <div>
+                {isLoadingCalendar && <div className="loading">⏳ טוען לוח שנה...</div>}
+                <div className="calendar-grid">
                 {['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'].map(day => (
                   <div key={day} className="calendar-header">{day}</div>
                 ))}
@@ -1094,7 +1136,9 @@ function App() {
                 ))}
               </div>
             ) : (
-              <div className="weekly-grid">
+              <>
+                {isLoadingWeekly && <div className="loading">⏳ טוען נתוני שבוע...</div>}
+                <div className="weekly-grid">
                 {(Array.isArray(weeklyData) ? weeklyData : []).map(day => (
                   <div 
                     key={day.date} 
@@ -1149,6 +1193,7 @@ function App() {
                   </div>
                   
                   <div className="modal-body">
+                    {isLoadingDayDetails && <div className="loading">⏳ טוען פרטי יום...</div>}
                     {selectedDayDetails.conflicts && selectedDayDetails.conflicts.length > 0 && (
                       <div className="conflicts-section">
                         <h4>⚠️ קונפליקטים בתפקידים</h4>
@@ -1255,10 +1300,13 @@ function App() {
                 value={newRole.permissions}
                 onChange={(e) => setNewRole({...newRole, permissions: e.target.value})}
               />
-              <button type="submit">הוסף תפקיד</button>
+              <button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? '⏳ מוסיף...' : 'הוסף תפקיד'}
+              </button>
             </form>
 
             <h3>רשימת תפקידים ({(Array.isArray(roles) ? roles : []).length})</h3>
+            {isLoadingRoles && <div className="loading">⏳ טוען תפקידים...</div>}
             <div className="list">
               {(Array.isArray(roles) ? roles : []).map(role => (
                 <div key={role.id} className="item">
@@ -1407,6 +1455,7 @@ function App() {
               </button>
             </div>
 
+            {isLoadingActivity && <div className="loading">⏳ טוען היסטוריה...</div>}
             <div className="activity-list">
               {(activity || []).map(item => (
                 <div key={item.id} className="activity-item">

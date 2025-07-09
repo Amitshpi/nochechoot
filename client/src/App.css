@@ -200,6 +200,36 @@ body {
   box-shadow: 0 6px 20px rgba(0,0,0,0.3);
 }
 
+.form button:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.form button:disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Loading Indicators */
+.loading {
+  text-align: center;
+  padding: 2rem;
+  font-size: 1.2rem;
+  color: #667eea;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 10px;
+  margin: 1rem 0;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
 /* Filters */
 .filters {
   display: flex;
