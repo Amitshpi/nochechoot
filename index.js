@@ -634,14 +634,14 @@ app.get('/api/activity', async (req, res) => {
       LIMIT 100
     `;
     
-    db.all(query, [], (err, rows) => {
-      if (err) {
-        console.error('Error fetching activity:', err);
-        res.status(500).json({ error: 'Database error' });
-        return;
-      }
-      res.json(rows || []);
+    const rows = await new Promise((resolve, reject) => {
+      db.all(query, [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
     });
+    
+    res.json(rows);
   } catch (error) {
     console.error('Error:', error);
     res.status(500).json({ error: 'Server error' });
