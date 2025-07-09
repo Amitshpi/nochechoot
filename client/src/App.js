@@ -1108,12 +1108,10 @@ function App() {
                 {['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'].map(day => (
                   <div key={day} className="calendar-header">{day}</div>
                 ))}
-                
                 {/* רווחים לימים לפני תחילת החודש */}
                 {Array.from({ length: new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay() }, (_, i) => (
                   <div key={`empty-${i}`} className="calendar-day empty"></div>
                 ))}
-                
                 {(Array.isArray(calendarData) ? calendarData : []).map(day => (
                   <div 
                     key={day.date} 
@@ -1122,9 +1120,7 @@ function App() {
                   >
                     <div className="day-number">{day.day}</div>
                     {hasRoleConflict(day) && (
-                                              <div className="conflict-indicator" title={`קונפליקט תפקידים: ${(day.conflicts || []).map(c => `${c.role} (${c.count} אנשים)`).join(', ')}`}>
-                        ⚠️
-                      </div>
+                      <div className="conflict-indicator" title={`קונפליקט תפקידים: ${(day.conflicts || []).map(c => `${c.role} (${c.count} אנשים)`).join(', ')}`}>⚠️</div>
                     )}
                     <div className="day-stats">
                       <span className="present-count">✅ {day.present}</span>
@@ -1134,9 +1130,10 @@ function App() {
                     </div>
                   </div>
                 ))}
+                </div>
               </div>
             ) : (
-              <>
+              <div>
                 {isLoadingWeekly && <div className="loading">⏳ טוען נתוני שבוע...</div>}
                 <div className="weekly-grid">
                 {(Array.isArray(weeklyData) ? weeklyData : []).map(day => (
@@ -1149,9 +1146,7 @@ function App() {
                       <div className="day-name">{day.dayName}</div>
                       <div className="day-number">{day.day}</div>
                       {hasRoleConflict(day) && (
-                        <div className="conflict-indicator" title={`קונפליקט תפקידים: ${(day.conflicts || []).map(c => `${c.role} (${c.count} אנשים)`).join(', ')}`}>
-                          ⚠️
-                        </div>
+                        <div className="conflict-indicator" title={`קונפליקט תפקידים: ${(day.conflicts || []).map(c => `${c.role} (${c.count} אנשים)`).join(', ')}`}>⚠️</div>
                       )}
                     </div>
                     <div className="day-stats">
@@ -1180,6 +1175,7 @@ function App() {
                     </div>
                   </div>
                 ))}
+                </div>
               </div>
             )}
 
