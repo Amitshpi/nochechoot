@@ -53,6 +53,24 @@ function App() {
   const [selectedDayDetails, setSelectedDayDetails] = useState(null);
   const [showDayModal, setShowDayModal] = useState(false);
 
+  // מצבי טעינה
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [isLoadingRoles, setIsLoadingRoles] = useState(false);
+  const [isLoadingPresence, setIsLoadingPresence] = useState(false);
+  const [isLoadingActivity, setIsLoadingActivity] = useState(false);
+  const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
+  const [isLoadingWeekly, setIsLoadingWeekly] = useState(false);
+  const [isLoadingDayDetails, setIsLoadingDayDetails] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
+
+  // לוח זמנים אוטומטי
+  const [scheduleStartDate, setScheduleStartDate] = useState('');
+  const [scheduleEndDate, setScheduleEndDate] = useState('');
+  const [leaveSchedule, setLeaveSchedule] = useState([]);
+  const [scheduleSummary, setScheduleSummary] = useState(null);
+
   const API_BASE = '/api';
 
   // טעינת נתונים
@@ -129,12 +147,74 @@ function App() {
   };
 
   const loadActivity = async () => {
+    setIsLoadingActivity(true);
     try {
       const response = await fetch(`${API_BASE}/activity`);
       const data = await response.json();
       setActivity(data);
     } catch (error) {
       console.error('Error loading activity:', error);
+    } finally {
+      setIsLoadingActivity(false);
+    }
+  };
+
+  const calculateLeaveSchedule = async () => {
+    if (!scheduleStartDate || !scheduleEndDate) {
+      alert('נא לבחור טווח תאריכים');
+      return;
+    }
+    
+    setIsLoadingSchedule(true);
+    try {
+      const response = await fetch(`${API_BASE}/schedule-leaves`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startDate: scheduleStartDate,
+          endDate: scheduleEndDate
+        })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        setLeaveSchedule(data.schedule);
+        setScheduleSummary(data.summary);
+        alert(`לוח הזמנים חושב בהצלחה! ${data.summary.scheduledLeaves} יציאות מתוכננות, ${data.summary.conflicts} קונפליקטים`);
+      }
+    } catch (error) {
+      console.error('Error calculating schedule:', error);
+      alert('שגיאה בחישוב לוח הזמנים');
+    } finally {
+      setIsLoadingSchedule(false);
+    }
+  };
+
+  const loadLeaveSchedule = async (week = null) => {
+    setIsLoadingSchedule(true);
+    try {
+      const params = week ? `?week=${week}` : '';
+      const response = await fetch(`${API_BASE}/leave-schedule${params}`);
+      const data = await response.json();
+      setLeaveSchedule(data);
+    } catch (error) {
+      console.error('Error loading leave schedule:', error);
+    } finally {
+      setIsLoadingSchedule(false);
+    }
+  };
+
+  const loadScheduleSummary = async () => {
+    try {
+      const params = new URLSearchParams({
+        startDate: scheduleStartDate,
+        endDate: scheduleEndDate
+      });
+      const response = await fetch(`${API_BASE}/schedule-summary?${params}`);
+      const data = await response.json();
+      setScheduleSummary(data);
+    } catch (error) {
+      console.error('Error loading schedule summary:', error);
     }
   };
 
@@ -622,6 +702,12 @@ function App() {
           onClick={() => setActiveTab('roles')}
         >
           ניהול תפקידים
+        </button>
+        <button 
+          className={activeTab === 'schedule' ? 'active' : ''} 
+          onClick={() => setActiveTab('schedule')}
+        >
+          לוח זמנים אוטומטי
         </button>
       </nav>
 
@@ -1231,24 +1317,131 @@ function App() {
               </button>
             </div>
 
-            <div className="activity-list">
-              {activity.map(item => (
-                <div key={item.id} className="activity-item">
-                  <div className="activity-time">
-                    {new Date(item.created_at).toLocaleString('he-IL')}
+            {isLoadingActivity ? (
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <p>טוען היסטוריית פעילות...</p>
+              </div>
+            ) : (
+              <div className="activity-list">
+                {activity.map(item => (
+                  <div key={item.id} className="activity-item">
+                    <div className="activity-time">
+                      {new Date(item.created_at).toLocaleString('he-IL')}
+                    </div>
+                    <div className="activity-action">
+                      {item.action === 'CREATE' && 'נוצר'}
+                      {item.action === 'UPDATE' && 'עודכן'}
+                      {item.action === 'DELETE' && 'נמחק'}
+                    </div>
+                    <div className="activity-table">
+                      {item.table_name === 'users' && 'משתמש'}
+                      {item.table_name === 'requests' && 'בקשה'}
+                    </div>
                   </div>
-                  <div className="activity-action">
-                    {item.action === 'CREATE' && 'נוצר'}
-                    {item.action === 'UPDATE' && 'עודכן'}
-                    {item.action === 'DELETE' && 'נמחק'}
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'schedule' && (
+          <div className="tab-content">
+            <h2>לוח זמנים אוטומטי</h2>
+            
+            <div className="schedule-controls">
+              <div className="date-range-selector">
+                <label>טווח תאריכים:</label>
+                <input
+                  type="date"
+                  value={scheduleStartDate}
+                  onChange={(e) => setScheduleStartDate(e.target.value)}
+                  placeholder="תאריך התחלה"
+                />
+                <span>עד</span>
+                <input
+                  type="date"
+                  value={scheduleEndDate}
+                  onChange={(e) => setScheduleEndDate(e.target.value)}
+                  placeholder="תאריך סיום"
+                />
+                <button 
+                  onClick={calculateLeaveSchedule}
+                  disabled={isLoadingSchedule || !scheduleStartDate || !scheduleEndDate}
+                  className="calculate-btn"
+                >
+                  {isLoadingSchedule ? 'מחשב...' : 'חשב לוח זמנים'}
+                </button>
+              </div>
+            </div>
+
+            {scheduleSummary && (
+              <div className="schedule-summary">
+                <h3>סיכום לוח הזמנים</h3>
+                <div className="summary-stats">
+                  <div className="stat">
+                    <span className="label">סה"כ אנשים:</span>
+                    <span className="value">{scheduleSummary.totalUsers}</span>
                   </div>
-                  <div className="activity-table">
-                    {item.table_name === 'users' && 'משתמש'}
-                    {item.table_name === 'requests' && 'בקשה'}
+                  <div className="stat">
+                    <span className="label">בקשות יציאה:</span>
+                    <span className="value">{scheduleSummary.totalRequests}</span>
+                  </div>
+                  <div className="stat">
+                    <span className="label">יציאות מתוכננות:</span>
+                    <span className="value">{scheduleSummary.scheduledLeaves}</span>
+                  </div>
+                  <div className="stat">
+                    <span className="label">קונפליקטים:</span>
+                    <span className="value conflict">{scheduleSummary.conflicts}</span>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+
+            {isLoadingSchedule ? (
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <p>מחשב לוח זמנים...</p>
+              </div>
+            ) : leaveSchedule.length > 0 ? (
+              <div className="schedule-results">
+                <h3>לוח הזמנים המחושב</h3>
+                <div className="schedule-list">
+                  {leaveSchedule.map((item, index) => (
+                    <div key={index} className={`schedule-item ${item.hasConflict ? 'conflict' : ''} ${item.priority}`}>
+                      <div className="schedule-header">
+                        <div className="user-info">
+                          <strong>{item.userName}</strong>
+                          {item.userRank && <span> - {item.userRank}</span>}
+                          {item.userRole && <span> ({item.userRole})</span>}
+                        </div>
+                        <div className="schedule-badges">
+                          {item.priority === 'high' && <span className="badge high-priority">בקשה מקורית</span>}
+                          {item.priority === 'low' && <span className="badge low-priority">יציאה אוטומטית</span>}
+                          {item.hasConflict && <span className="badge conflict">קונפליקט</span>}
+                        </div>
+                      </div>
+                      <div className="schedule-details">
+                        <div className="dates">
+                          <span>📅 {new Date(item.startDate).toLocaleDateString('he-IL')}</span>
+                          <span>עד {new Date(item.endDate).toLocaleDateString('he-IL')}</span>
+                        </div>
+                        {item.reason && <div className="reason">סיבה: {item.reason}</div>}
+                        {item.hasConflict && item.conflictReason && (
+                          <div className="conflict-reason">⚠️ {item.conflictReason}</div>
+                        )}
+                        <div className="week">שבוע: {new Date(item.week).toLocaleDateString('he-IL')}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="no-schedule">
+                <p>אין לוח זמנים מחושב. בחר טווח תאריכים ולחץ על "חשב לוח זמנים".</p>
+              </div>
+            )}
           </div>
         )}
 
