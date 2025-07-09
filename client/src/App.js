@@ -636,9 +636,13 @@ function App() {
 
   const exportCalendarToExcel = async () => {
     try {
+      console.log('Starting Excel export...');
+      
       // יצירת טווח של 3 חודשים מהחודש הנוכחי
       const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
       const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 3, 0);
+      
+      console.log('Date range:', startDate.toISOString().split('T')[0], 'to', endDate.toISOString().split('T')[0]);
       
       // טעינת נתוני נוכחות לכל התאריכים בטווח
       const allDates = [];
@@ -648,6 +652,8 @@ function App() {
         allDates.push(new Date(currentDate).toISOString().split('T')[0]);
         currentDate.setDate(currentDate.getDate() + 1);
       }
+      
+      console.log('Total dates to process:', allDates.length);
       
       // יצירת מבנה נתונים לאקסל
       const excelData = [];
@@ -659,18 +665,33 @@ function App() {
       });
       excelData.push(headers);
       
-      // נתונים לכל משתמש
+      console.log('Processing users:', users.length);
+      
+      // נתונים לכל משתמש - שימוש בנתונים קיימים במקום קריאות API
       for (const user of users) {
         const userRow = [user.name, user.rank || '', user.role || ''];
         
-        // בדיקת נוכחות לכל תאריך
+        // בדיקת נוכחות לכל תאריך - שימוש בנתונים קיימים
         for (const date of allDates) {
-          const userPresence = await getUserPresenceForDate(user.id, date);
-          userRow.push(userPresence);
+          // בדיקה אם יש בקשות יציאה למשתמש בתאריך זה
+          const userRequests = requests.filter(req => 
+            req.user_id === user.id && 
+            req.status === 'approved' &&
+            new Date(req.start_date) <= new Date(date) && 
+            new Date(req.end_date) >= new Date(date)
+          );
+          
+          if (userRequests.length > 0) {
+            userRow.push('לא בבסיס');
+          } else {
+            userRow.push('בבסיס');
+          }
         }
         
         excelData.push(userRow);
       }
+      
+      console.log('Excel data prepared, creating file...');
       
       // יצירת קובץ אקסל
       const ws = XLSX.utils.aoa_to_sheet(excelData);
@@ -717,11 +738,15 @@ function App() {
       
       // הורדת הקובץ
       const fileName = `calendar_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      console.log('Downloading file:', fileName);
       XLSX.writeFile(wb, fileName);
+      
+      console.log('Excel export completed successfully!');
+      alert('הקובץ יוצא בהצלחה!');
       
     } catch (error) {
       console.error('Error exporting calendar to Excel:', error);
-      alert('שגיאה בייצוא לוח השנה לאקסל');
+      alert('שגיאה בייצוא לוח השנה לאקסל: ' + error.message);
     }
   };
 
